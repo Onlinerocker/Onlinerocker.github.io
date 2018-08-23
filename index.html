@@ -1,0 +1,47 @@
+<html lang="{{lang}}">
+	<head>
+		<link rel="stylesheet" href="style.css">
+		<title>! DANGER !</title>
+	</head>
+	<div class="topnav">
+		<a href="homepage.html" class="button">CLICK TO PR0CEED</a>
+	</div>
+	<body>
+		<span id="bg">
+		0101010101001010
+		</span>
+	
+		<script>
+			var bgString;
+		
+			function createRandomString(){
+				bgString = "";
+				for(i = 0; i < 100000; i++){
+					var num = Math.floor(Math.random() * 10);
+					if(num < 5){
+						bgString += " ";
+					}
+					
+					if(num >= 5 && num <= 7){
+						bgString += "0"
+					}
+					
+					if(num >= 7){
+						bgString += "1"
+					}
+				}
+			}
+		
+			function updateBG(){
+				createRandomString();
+				document.getElementById("bg").innerHTML = bgString;
+			}
+
+			window.onload = updateBG;
+			window.setInterval(updateBG, 500);
+
+
+		</script>
+	
+	</body>
+</html>
