@@ -1,25 +1,58 @@
 <!DOCTYPE html>
-<html lang="en-us">
+<html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unity WebGL Player | SpaceCoin</title>
-    <link rel="shortcut icon" href="TemplateData/favicon.ico">
-    <link rel="stylesheet" href="TemplateData/style.css">
-    <script src="TemplateData/UnityProgress.js"></script>
-    <script src="Build/UnityLoader.js"></script>
-    <script>
-      var gameInstance = UnityLoader.instantiate("gameContainer", "Build/space.json", {onProgress: UnityProgress});
-    </script>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bootstrap - Prebuilt Layout</title>
+
+    <!-- Bootstrap -->
+    <link href="css/bootstrap-4.3.1.css" rel="stylesheet">
+
   </head>
   <body>
-    <div class="webgl-content">
-      <div id="gameContainer" style="width: 1160px; height: 600px"></div>
-      <div class="footer">
-        <div class="webgl-logo"></div>
-        <div class="fullscreen" onclick="gameInstance.SetFullscreen(1)"></div>
-        <div class="title">SpaceCoin</div>
-      </div>
-    </div>
+<div class="jumbotron jumbotron-fluid text-center">
+  <h1 class="display-4">Gabe Caldwell</h1>
+  <p>&nbsp;</p>
+  <p>Welcome to my portfolio of games!</p>
+  <p>Please feel free to explore and contact me if you have any questions. </p>
+  <hr class="my-4">
+  
+</div>
+<div class="container"> <br>
+       <hr>
+       <br>
+  <div class="row">
+    <div class="col-md-4">
+             <div class="card">
+               <img class="card-img-top" src="../Pictures/ultra stack.jpg" alt="Card image cap">
+                <div class="card-body">
+                  <h4 class="card-title">Ultra Stack</h4>
+                  <p>iOS/Android</p>
+                  <p class="card-text">Ultra Stack is a physics based puzzle game that requires players to stack and balance falling blocks.</p>
+                  <br></br>
+                  <a href="https://itunes.apple.com/us/app/ultra-stack/id1460463321?mt=8&ign-mpt=uo%3D2" class="btn btn-primary">Download for iOS</a><br></br><a href="https://play.google.com/store/apps/details?id=com.onlinerocker.ultrastack" class="btn btn-primary">Download for Android</a></div>
+             </div>
+     </div>
+</div>
+       <br/>
+       <br/>
+<br/>
+       <br/>
+<br>
+       <hr>
+       <div class="row">
+          <div class="text-center col-lg-6 offset-lg-3">
+            <h4>Contact</h4>
+            <p>gcaldwe1@swarthmore.edu</p>
+          </div>
+       </div>
+  </div>
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) --> 
+    <script src="js/jquery-3.3.1.min.js"></script>
+
+    <!-- Include all compiled plugins (below), or include individual files as needed --> 
+    <script src="js/popper.min.js"></script>
+    <script src="js/bootstrap-4.3.1.js"></script>
   </body>
 </html>
