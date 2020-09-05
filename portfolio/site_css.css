@@ -41,6 +41,12 @@ a {
   color: #d33682;
 }
 
+details {
+  font-family: monospace;
+  font-size: 18px;
+  color: #d33682; 
+}
+
 .contact {
   color: #93a1a1;
   text-align: center;
