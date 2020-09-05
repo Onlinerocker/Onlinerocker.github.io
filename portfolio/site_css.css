@@ -13,6 +13,7 @@ h1 {
   text-align: center;
   font-family: monospace;
   font-size: 40px;
+  line-height: 0.5;
 }
 
 h2 {
@@ -45,6 +46,18 @@ details {
   font-family: monospace;
   font-size: 18px;
   color: #d33682; 
+}
+
+nav {
+  text-align: center;
+}
+
+.navbar {
+  background-color: #002b36;
+  color: #6c71c4;
+  margin-left: 5px;
+  margin-right: 5px;
+  font-size: 20px;
 }
 
 .contact {
