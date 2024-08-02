@@ -1,0 +1,45 @@
+/* Style the navbar container */
+.navbar-container {
+    width: 100px; /* Set the width of the navbar */
+    height: 100vh; /* Set the height of the navbar to full viewport height */
+    position: fixed; /* Fix the navbar to the left side */
+    left: 0; /* Set the left position to 0 */
+    top: 0; /* Set the top position to 0 */
+    background-color: #f0f0f0; /* Set the background color */
+  }
+
+  .mono-gabe {
+    font-family: "Kode Mono", monospace;
+    font-optical-sizing: auto;
+    font-weight: 300;
+    font-style: normal;
+  }
+  
+  /* Style the navbar */
+  .navbar {
+    padding: 20px; /* Add some padding */
+  }
+  
+  /* Style the navbar links */
+  .navbar ul {
+    list-style: none; /* Remove bullet points */
+    margin: 0; /* Remove margin */
+    padding: 0; /* Remove padding */
+  }
+  
+  .navbar li {
+    margin-bottom: 20px; /* Add some margin between links */
+  }
+  
+  .navbar a {
+    text-decoration: none; /* Remove underline */
+    color: #333; /* Set the text color */
+  }
+
+  .body-container {
+    margin: 0px;
+    padding-top: 10px;
+    margin-left: 100px;
+    padding-left: 20px;
+    padding-bottom: 20px;
+  }
