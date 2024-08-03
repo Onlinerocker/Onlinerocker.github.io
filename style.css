@@ -1,6 +1,6 @@
 /* Style the navbar container */
 .navbar-container {
-    width: 100px; /* Set the width of the navbar */
+    width: 110px; /* Set the width of the navbar */
     height: 100vh; /* Set the height of the navbar to full viewport height */
     position: fixed; /* Fix the navbar to the left side */
     left: 0; /* Set the left position to 0 */
@@ -39,7 +39,7 @@
   .body-container {
     margin: 0px;
     padding-top: 10px;
-    margin-left: 100px;
+    margin-left: 110px;
     padding-left: 20px;
     padding-bottom: 20px;
   }
