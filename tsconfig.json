@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "outDir": "./ts_bin",
+    "rootDir": "./ts_src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "types": ["@webgpu/types"],
+    "baseUrl": ".",
+    "paths": {
+      "wgpu-matrix": ["node_modules/wgpu-matrix/*"]
+    }
+  },
+  "include": ["ts_src/**/*"]
+}

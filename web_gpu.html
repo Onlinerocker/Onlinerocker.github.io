@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<script type="importmap">
+{
+    "imports": 
+    {
+        "wgpu-matrix": "./node_modules/wgpu-matrix/dist/3.x/wgpu-matrix.module.js"
+    }
+}
+</script>
+<head>
+    <meta charset="UTF-8">
+    <title>WebGPU Example</title>
+    <style>
+        /* Add some basic styling to our canvas */
+        canvas {
+            width: 800px;
+            height: 600px;
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <!-- Create a canvas element to render our WebGPU content -->
+    <canvas id="canvas"></canvas>
+
+    <!-- Include the compiled JavaScript code -->
+    <script type="module" src="ts_bin/web_gpu.js"></script>
+</body>
+</html>
