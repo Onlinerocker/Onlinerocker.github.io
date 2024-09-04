@@ -4,7 +4,10 @@
 {
     "imports": 
     {
-        "wgpu-matrix": "./ts_bin/wgpu-matrix.module.js"
+        "wgpu-matrix": "./ts_bin/wgpu-matrix.module.js",
+        "font": "./ts_bin/font.js",
+        "collision": "./ts_bin/collision.js",
+        "game_entity": "./ts_bin/game_entity.js"
     }
 }
 </script>
@@ -20,11 +23,13 @@
         }
     </style>
 </head>
-<body>
+<img src="https://media.tenor.com/cCADMf95jDsAAAAM/alien-dance.gif"></a> 
+<body user-select="none">
     <!-- Create a canvas element to render our WebGPU content -->
-    <canvas id="canvas"></canvas>
+    <canvas id="canvas", user-select="none"></canvas>
 
     <!-- Include the compiled JavaScript code -->
     <script type="module" src="ts_bin/web_gpu.js"></script>
 </body>
+ <img src="https://media.tenor.com/cCADMf95jDsAAAAM/alien-dance.gif"></a> 
 </html>

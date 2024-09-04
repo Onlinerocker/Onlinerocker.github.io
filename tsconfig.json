@@ -11,9 +11,12 @@
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
     "types": ["@webgpu/types"],
-    "baseUrl": ".",
+    "baseUrl": "./",
     "paths": {
-      "wgpu-matrix": ["node_modules/wgpu-matrix/*"]
+      "wgpu-matrix": ["node_modules/wgpu-matrix/*"],
+      "font": ["ts_src/font.ts"],
+      "collision": ["ts_src/collision.ts"],
+      "game_entity": ["ts_src/game_entity.ts"]
     }
   },
   "include": ["ts_src/**/*"]
