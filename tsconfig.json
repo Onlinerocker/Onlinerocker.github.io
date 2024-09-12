@@ -16,7 +16,9 @@
       "wgpu-matrix": ["node_modules/wgpu-matrix/*"],
       "font": ["ts_src/font.ts"],
       "collision": ["ts_src/collision.ts"],
-      "game_entity": ["ts_src/game_entity.ts"]
+      "game_entity": ["ts_src/game_entity.ts"],
+      "web_gpu": ["ts_src/web_gpu.ts"],
+      "game_ui": ["ts_src/ui.ts"]
     }
   },
   "include": ["ts_src/**/*"]

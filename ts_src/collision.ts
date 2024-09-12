@@ -1,5 +1,5 @@
 import {vec2} from 'wgpu-matrix'
-import { GameEntity, EntityType } from 'game_entity';
+import { GameEntity } from 'game_entity';
 export {Rect, isColliding, moveAndHandleCollision }
 
 class Rect

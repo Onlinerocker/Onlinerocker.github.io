@@ -5,7 +5,10 @@
 import {vec4, vec3, mat4, Vec2, vec2} from 'wgpu-matrix';
 import { parseBitmapFont, GlyphInfo, getGlyphUv, fillGlyphVertexBuffer } from 'font'
 import { Rect, isColliding, moveAndHandleCollision } from 'collision';
-import { Enemy, GameEntity, EntityType } from 'game_entity';
+import { BigEnemy, Enemy, GameEntity, EntityType, WaveHandler, BossFight } from 'game_entity';
+import { drawProgressBar, loadUIAssets } from 'game_ui';
+
+export { drawSprite, createTexture, ratio }
 
 interface WebGpuObj
 {
@@ -23,6 +26,14 @@ var ADown: boolean;
 var SDown: boolean;
 var DDown: boolean;
 var SpaceDown: boolean;
+var lmbDown: boolean;
+var mouseX: number;
+var mouseY: number;
+
+var charHealth: number = 1;
+var charShootTimer: number = 0;
+var slowTime: number = 0;
+var slowRecharging: boolean = true;
 
 var canvas: HTMLCanvasElement;
 const Width:number = 800;
@@ -45,6 +56,11 @@ var charEntity: GameEntity = new GameEntity();
 var entities: Array<GameEntity> = new Array();
 var deadEntities: Array<number> = new Array();
 
+var bossFight: BossFight = new BossFight();
+var lastSpawnPoint = 0;
+var enemySpawnPoints = [[1, 0.75], [-1, -0.75], [-1, 0.75], [1, -0.75]];
+var enemySpawnPointDirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
 async function initWebGPU() 
 {
     if (!navigator.gpu) {
@@ -58,9 +74,10 @@ async function initWebGPU()
 
     const device = await adapter.requestDevice();
     canvas = document.getElementById("canvas") as HTMLCanvasElement;
-    canvas.addEventListener('mousedown', (e) => handleMouseDown(e))
+    canvas.addEventListener('mousedown', e => handleMouseDown(e) );
     //canvas.addEventListener('click', (e) => { console.log("hi"); e.preventDefault(); e.stopPropagation(); return false;});
-    //canvas.addEventListener('mosueup', (e)=> { console.log("hi"); e.preventDefault(); e.stopPropagation(); return false;});
+    canvas.addEventListener('mouseup', e => handleMouseUp(e));
+    canvas.addEventListener('mousemove', e => handleMouseMove(e))
     canvas.width = Width * devicePixelRatio;
     canvas.height = Height * devicePixelRatio; 
     ratio = canvas.width / canvas.height;
@@ -206,6 +223,14 @@ function updateWorld(deltaTime: number, b: Rect)
     {
         dir[0] += 1.0;
     }
+
+    charShootTimer -= deltaTime;
+    if (lmbDown && charShootTimer <= 0 && charEntity.alive)
+    {
+        shootBullet();
+        charShootTimer = 0.05;
+    }
+
     vec2.normalize(dir, dir);
     if (!Number.isNaN(deltaTime))
     {
@@ -219,23 +244,33 @@ function updateWorld(deltaTime: number, b: Rect)
         charEntity.y = charEntity.rect.y + (charEntity.rect.height/2);//+= dir[1]*deltaTime;
     }
 
-    var spawnNewEnemy = false;
+    for (let entity of entities)
+    {
+        entity.Update(deltaTime);
+    }
+
     for (let i = 0; i < entities.length; ++i)
     {
         let entity = entities[i];
-        entity.vx += entity.ax * deltaTime;
-        entity.vy += entity.ay * deltaTime;
-        entity.x += entity.vx * deltaTime;
-        entity.y += entity.vy * deltaTime;
-        entity.rect.x = entity.x;
-        entity.rect.y = entity.y;
+        if (entity.type == EntityType.Projectile 
+            && charEntity.alive
+            && isColliding(entity.rect, {x: charEntity.x, y: charEntity.y, width:0, height:0}))
+        {
+            entity.alive = false;
 
+            charHealth -= 1
+            if (charHealth <= 0)
+            {
+                charEntity.alive = false;
+            }
+            break;
+        }
         for (var j = 0; j < entities.length; ++j)
         {
             let entityOther = entities[j];
             if (entityOther.type == EntityType.Enemy 
                 && entity.type == EntityType.Bullet 
-                && entity.alive
+                && entityOther.alive
                 && isColliding(entity.rect, entityOther.rect))
             {
                 entity.alive = false;
@@ -244,16 +279,18 @@ function updateWorld(deltaTime: number, b: Rect)
                 enemy.health -= 1;
                 if (enemy.health <= 0)
                 {
+                    bossFight.currentHealth -= enemy.maxHealth;
                     enemy.alive = false;
-                    spawnNewEnemy = true;
                     deadEntities.push(j);
                 }
                 //break; lets say we can damage more than one
             }
         }
 
+        // waves
+        // progression triggered by boss health progression
         var outOfBounds: boolean = entity.x > Width/Height || entity.x < -Width/Height || entity.y < -1.0 || entity.y > 1.0;
-        if (outOfBounds && entity.type == EntityType.Bullet)
+        if (outOfBounds && (entity.type == EntityType.Bullet || entity.type == EntityType.Projectile))
         {
             entity.alive = false;
         }
@@ -266,9 +303,7 @@ function updateWorld(deltaTime: number, b: Rect)
     let back = entities.length - 1;
     for (let i of deadEntities)
     {
-        let temp = entities[back];//GameEntity.Copy(entities[back]);
-        console.log(deadEntities.length);
-        console.log(temp);
+        let temp = entities[back];
         while (temp.alive == false && back > i)
         {
             --back;
@@ -288,9 +323,16 @@ function updateWorld(deltaTime: number, b: Rect)
     }
     deadEntities.splice(0, deadEntities.length);
 
-    if (spawnNewEnemy)
+    if (false)
     {
-        var enemy: Enemy = new Enemy(Math.random() * (2*Width/Height) + -Width/Height, Math.random()*2 + -1, 0, 0, 0, 0, {x:0, y:0, width:0.2, height:0.2}, 1);
+        var inc = Math.floor(Math.random() * 3 + 1);
+        lastSpawnPoint += inc;
+        lastSpawnPoint %= 4;
+        console.log("inc " + inc);
+        console.log("spawn " + lastSpawnPoint);
+        var point = enemySpawnPoints[lastSpawnPoint];
+        var newEnemyDir = enemySpawnPointDirs[lastSpawnPoint];
+        var enemy: Enemy = new Enemy(point[0], point[1], 0, 0, 0, 0, {x:0, y:0, width:0.2, height:0.2}, entities, 10, [newEnemyDir[0], newEnemyDir[1]]);
         entities.push(enemy);
     }
 }
@@ -428,16 +470,16 @@ function drawText(renderPass: GPURenderPassEncoder, textString: string, mat: Flo
     }
 }
 
-function drawSprite(renderPass: GPURenderPassEncoder, transform: Float32Array, texture: GPUTexture)
+function drawSprite(renderPass: GPURenderPassEncoder, transform: Float32Array, texture: GPUTexture, color: [number, number, number, number] = [1,1,1,1])
 {
     const sprite = new Float32Array([
-        -0.5, -0.5, 0, 1,    1, 1, 1, 1,   0, 1,
-        -0.5, 0.5, 0, 1,     1, 1, 1, 1,   0, 0,
-        0.5, -0.5, 0, 1,     1, 1, 1, 1,   1, 1,
+        -0.5, -0.5, 0, 1,    color[0],color[1],color[2],color[3],   0, 1,
+        -0.5, 0.5, 0, 1,     color[0],color[1],color[2],color[3],   0, 0,
+        0.5, -0.5, 0, 1,     color[0],color[1],color[2],color[3],   1, 1,
 
-        0.5, -0.5, 0, 1,     1, 1, 1, 1,   1, 1,
-        -0.5, 0.5, 0, 1,     1, 1, 1, 1,  0, 0,
-        0.5, 0.5, 0, 1,      1, 1, 1, 1,   1, 0,
+        0.5, -0.5, 0, 1,     color[0],color[1],color[2],color[3],   1, 1,
+        -0.5, 0.5, 0, 1,     color[0],color[1],color[2],color[3],   0, 0,
+        0.5, 0.5, 0, 1,      color[0],color[1],color[2],color[3],   1, 0,
     ]);
 
     const verticesBuffer = createVertexBuffer(WebGpuObj.device, sprite);
@@ -467,7 +509,30 @@ async function render()
     charEntity.rect.x = charEntity.x - (charEntity.rect.width/2);
     charEntity.rect.y = charEntity.y - (charEntity.rect.height/2);
 
-    if (!Number.isNaN(deltaTime)) accTime += SpaceDown ? deltaTime * 0.25 : deltaTime;
+    if (!Number.isNaN(deltaTime)) accTime += (SpaceDown && slowTime > 0 && !slowRecharging) ? deltaTime * 0.25 : deltaTime;
+    if (SpaceDown && slowTime > 0 && !slowRecharging)
+    {
+        slowTime -= deltaTime*0.5;
+        if (slowTime <= 0)
+        {
+            slowTime = 0;
+            slowRecharging = true;
+            SpaceDown = false;
+        }
+    }
+    else
+    {
+        slowRecharging = true;
+    }
+    if (!Number.isNaN(deltaTime) && slowRecharging)
+    {
+        slowTime += deltaTime;
+        if (slowTime >= 1.0)
+        {
+            slowTime = 1.0;
+            slowRecharging = false;
+        }
+    }
     let thresh = 0.008;
     while (accTime >= thresh)
     {
@@ -486,23 +551,37 @@ async function render()
 
     renderPass.setPipeline(Pipeline);
 
+    // draw world
     var matGabe = mat4.identity();
     matGabe = mat4.mul(orthoMat, matGabe)
     mat4.scale(matGabe, [gabeRect.width, gabeRect.height, 1.0], matGabe);
     mat4.translate(matGabe, [0, -1, 0], matGabe);
-    drawSprite(renderPass, matGabe, gabeTexture);
-
+    drawSprite(renderPass, matGabe, gabeTexture, [0.3, 0.7, 0.3, 1]);
+    
     //draw character
-    drawSprite(renderPass, mat, animeGirlTexture);
+    if (charEntity.alive)
+        drawSprite(renderPass, mat, animeGirlTexture);
 
+    // draw UI
     for (let entity of entities)
     {
         let matEntity = mat4.clone(orthoMat);
         mat4.translate(matEntity, [entity.x, entity.y, 0], matEntity);
         mat4.scale(matEntity, [entity.rect.width, entity.rect.height, 1.0], matEntity)
-        drawSprite(renderPass, matEntity, gabeTexture);
+        var color: [number,number,number,number] = [0,0,1,1];
+        if (entity.type == EntityType.Enemy)
+        {
+            var enemy = entity as Enemy;
+            drawProgressBar(renderPass, enemy.health, enemy.maxHealth, {x: entity.x, y: entity.y + enemy.rect.height/2 + 0.05, width: 0.3, height: 0.03});
+            color = [1,0,0,1];
+        } 
+        else if (entity.type == EntityType.Bullet) color = [1,1,0,1];
+        drawSprite(renderPass, matEntity, gabeTexture, color);
     }
 
+    // slow cooldown bar
+    drawProgressBar(renderPass, slowTime, 1.0, {x:-Width/Height + 0.16, y:0.9, width:0.3, height:0.05}, [0,0,0,1], [0,1,1,1]);
+    // fps counter calc
     if (!Number.isNaN(deltaTime))
         lastFpsCalc += deltaTime;
     if (lastFpsCalc > 0.1)
@@ -510,7 +589,19 @@ async function render()
         lastFpsCalc = 0.0;
         displayText = (1/deltaTime).toPrecision(3) + "fps";
     }
+    // boss health
+    var bossHealthMat = mat4.identity();
+    mat4.translate(bossHealthMat, [-0.95, -0.85, 0], bossHealthMat);
+    drawText(renderPass, "Boss Health", bossHealthMat, 0.5);
+    drawProgressBar(renderPass, bossFight.currentHealth, bossFight.maxHealth, {x: 0, y: -0.95, width: 1.9*Width/Height, height:0.05}, [0,0,0,1], [1,0,0,1]);
 
+    if (bossFight.currentHealth <= 0)
+    {
+        let preventedMat = mat4.identity();
+        drawText(renderPass, "INVADER EXTERMINATED", mat4.translate(preventedMat, [-0.9, 0, 0]), 1.0);
+    }
+
+    // fps counter
     mat4.translate(mat1, [-Width/Height, 1.0, 0], mat1);
     drawText(renderPass, displayText, mat1, 0.5);
     mat4.translate(mat1, [0, -0.2, 0], mat1);
@@ -557,8 +648,11 @@ function handleKeyDown(e: KeyboardEvent)
     }
 }
 
+var music = new Audio("./music/bg_music.mp3")
+var playing = false;
 function handleKeyUp(e: KeyboardEvent)
 {
+    if (!playing) music.play();
     switch(e.code)
     {
         case 'KeyW':
@@ -579,10 +673,28 @@ function handleKeyUp(e: KeyboardEvent)
     }
 }
 
+function handleMouseUp(e: MouseEvent)
+{
+    if (e.button == 0)
+    {
+        lmbDown = false;
+    }
+}
+
 function handleMouseDown(e: MouseEvent)
 {
+    if (e.button == 0)
+    {
+        lmbDown = true;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+function handleMouseMove(e: MouseEvent)
+{
     var rect: DOMRect = canvas.getBoundingClientRect();
-    console.log(e.button);
     let x = (e.x - rect.x);
     let y = (e.y - rect.y);
     x /= Height;
@@ -592,43 +704,40 @@ function handleMouseDown(e: MouseEvent)
     x -= (Width/Height);
     y += 1;
 
+    mouseX = x;
+    mouseY = y;
+}
+
+function shootBullet()
+{
+    let x = mouseX;
+    let y = mouseY;
     x -= charEntity.x;
     y -= charEntity.y;
-
-    if (e.button == 0)
-    {
-        //entities.splice(0, entities.length);
-        //charEntity.x = x;
-        //charEntity.y = y;
-        let dir: Float32Array = vec2.create(x, y);
-        vec2.normalize(dir, dir);
-        let entity: GameEntity = new GameEntity();
-        entity.x = charEntity.x;
-        entity.y = charEntity.y;
-        entity.vx = dir[0] * 3;
-        entity.vy = dir[1] * 3;
-        entity.rect.x = entity.x;
-        entity.rect.y = entity.y;
-        entity.rect.width = 0.1;
-        entity.rect.height = 0.1;
-        entity.type = EntityType.Bullet;
-        entities.push(entity);
-
-        console.log("x " + entity.x);
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
+    let dir: Float32Array = vec2.create(x, y);
+    vec2.normalize(dir, dir);
+    let entity: GameEntity = new GameEntity();
+    entity.x = charEntity.x;
+    entity.y = charEntity.y;
+    entity.vx = dir[0] * 3;
+    entity.vy = dir[1] * 3;
+    entity.rect.x = entity.x;
+    entity.rect.y = entity.y;
+    entity.rect.width = 0.08;
+    entity.rect.height = 0.08;
+    entity.type = EntityType.Bullet;
+    entities.push(entity);
 }
 
 async function main() 
 {
-    console.log("hiiiii");
     glyphs = await parseBitmapFont("./font/font.txt");
     WDown = false;
     ADown = false;
     SDown = false;
     DDown = false;
+    SpaceDown = false;
+    lmbDown = false;
     lastFpsCalc = 10.0;
 
     window.addEventListener('keydown', (e) => handleKeyDown(e));
@@ -636,18 +745,21 @@ async function main()
 
     charEntity.x = 0;
     charEntity.y = 1.0;
-
     charEntity.rect.width = 0.1;
-    charEntity.rect.height = 0.3;
+    charEntity.rect.height = 0.2;
+    charEntity.alive = true;
+    charEntity.type = EntityType.Player;
 
     WebGpuObj = await initWebGPU();
     Pipeline = await createPipeline(WebGpuObj.device, WebGpuObj.format);
     animeGirlTexture = await createTexture('./megaphone_girl.png');
     gabeTexture = await createTexture('./IMG_3372.png');
     fontTexture = await createTexture('./font/font.png');
+    await loadUIAssets();
 
-    var enemy: Enemy = new Enemy(0, 0, 0, 0, 0, 0, {x:0, y:0, width:0.2, height:0.2}, 10);
-    entities.push(enemy);
+    bossFight.maxHealth = 1000;
+    bossFight.currentHealth = bossFight.maxHealth;
+    entities.push(new WaveHandler(bossFight, 1000, entities));
 
     requestAnimationFrame(render);
 }
