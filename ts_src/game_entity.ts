@@ -114,7 +114,7 @@ class WaveHandler extends GameEntity
         {
 
         }
-        else if (this.bossFight.currentHealth < 50)
+        else if (this.bossFight.currentHealth <= 50)
         {
             this.RunWave3(deltaTime);
         }
