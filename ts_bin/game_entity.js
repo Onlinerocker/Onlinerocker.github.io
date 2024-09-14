@@ -70,6 +70,8 @@ class WaveHandler extends GameEntity {
         this.pendingSpawn = 0;
         this.bossFight = bossFight;
         this.worldList = worldEntityList;
+    }
+    Start() {
         var enemy = new BigEnemy(-1.1, 0, 0, 0, 0, 0, { x: 0, y: 0, width: 0.4, height: 0.4 }, this.worldList, 100);
         this.worldList.push(enemy);
         this.spawnedList.push(enemy);
@@ -82,6 +84,18 @@ class WaveHandler extends GameEntity {
     }
     ChooseWave(deltaTime) {
         if (this.bossFight.currentHealth <= 0) {
+        }
+        else if (this.bossFight.currentHealth < 50) {
+            this.RunWave3(deltaTime);
+        }
+        else if (this.bossFight.currentHealth <= 250) {
+            this.RunWave4(deltaTime);
+        }
+        else if (this.bossFight.currentHealth <= 300) {
+            this.RunWave3(deltaTime);
+        }
+        else if (this.bossFight.currentHealth <= 500) {
+            this.RunWave4(deltaTime);
         }
         else if (this.bossFight.currentHealth <= 650) {
             this.RunWave3(deltaTime);
@@ -130,7 +144,7 @@ class WaveHandler extends GameEntity {
             this.lastSpawnPoint %= 4;
             var point = this.enemySpawnPoints[this.lastSpawnPoint];
             var newEnemyDir = this.enemySpawnPointDirs[this.lastSpawnPoint];
-            var enemy = new BigEnemy(1.1, 0, 0, 0, 0, 0, { x: 0, y: 0, width: 0.4, height: 0.4 }, this.worldList, 100);
+            var enemy = new BigEnemy(1.1, -0.27, 0, 0, 0, 0, { x: 0, y: 0, width: 0.4, height: 0.4 }, this.worldList, 100);
             enemy.shootDir = [-1, 0];
             this.spawnedList.push(enemy);
             this.worldList.push(enemy);
@@ -164,6 +178,28 @@ class WaveHandler extends GameEntity {
             }
             else
                 this.SpawnSpiralEnemy();
+        }
+    }
+    RunWave4(deltaTime) {
+        var amtAlive = 0;
+        for (var e of this.spawnedList) {
+            if (e.alive) {
+                ++amtAlive;
+            }
+        }
+        if (amtAlive == 0) {
+            this.spawnedList.splice(0, this.spawnedList.length);
+            var inc = Math.floor(Math.random() * 3 + 1);
+            this.lastSpawnPoint += inc;
+            this.lastSpawnPoint %= 4;
+            var enemy = new BigEnemy(1.1, -0.27, 0, 0, 0, 0, { x: 0, y: 0, width: 0.4, height: 0.4 }, this.worldList, 100);
+            enemy.shootDir = [-1, 0];
+            this.spawnedList.push(enemy);
+            this.worldList.push(enemy);
+            var enemy1 = new BigEnemy(-1.1, 0.6, 0, 0, 0, 0, { x: 0, y: 0, width: 0.4, height: 0.4 }, this.worldList, 100);
+            enemy1.shootDir = [1, 0];
+            this.spawnedList.push(enemy1);
+            this.worldList.push(enemy1);
         }
     }
 }

@@ -4,10 +4,11 @@ import { mat4, vec2 } from 'wgpu-matrix';
 import { parseBitmapFont, fillGlyphVertexBuffer } from 'font';
 import { isColliding, moveAndHandleCollision } from 'collision';
 import { Enemy, GameEntity, EntityType, WaveHandler, BossFight } from 'game_entity';
-import { drawProgressBar, loadUIAssets } from 'game_ui';
+import { blankTexture, drawProgressBar, loadUIAssets } from 'game_ui';
 export { drawSprite, createTexture, ratio };
 var WebGpuObj;
 var Pipeline;
+var PipelineBg;
 //var SpritePosition: Float32Array;
 var LastFrameMS;
 var WDown;
@@ -37,6 +38,7 @@ var accTime = 0;
 var charEntity = new GameEntity();
 var entities = new Array();
 var deadEntities = new Array();
+var globalTime = 0;
 var bossFight = new BossFight();
 var lastSpawnPoint = 0;
 var enemySpawnPoints = [[1, 0.75], [-1, -0.75], [-1, 0.75], [1, -0.75]];
@@ -67,45 +69,8 @@ async function initWebGPU() {
     });
     return { device, context, format };
 }
-async function createPipeline(device, format) {
-    const shaderModule = device.createShaderModule({
-        code: `
-            struct Uniforms
-            {
-                modelViewMatrix: mat4x4f,
-            }
-            @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-            struct VertexOutput 
-            {
-                @builtin(position) position : vec4f,
-                @location(0) color: vec4f,
-                @location(1) uv: vec2f
-            }
-
-            @vertex
-            fn vertexMain(@location(0) position : vec4f, @location(1) color: vec4f, @location(2) uv: vec2f) -> VertexOutput 
-            {
-                var out: VertexOutput;
-                out.position = uniforms.modelViewMatrix * vec4<f32>(position.xy, 0.0, 1.0);
-                out.color = color;
-                out.uv = uv;
-                return out;
-            }
-
-            @group(0) @binding(1) var mySampler: sampler;
-            @group(0) @binding(2) var myTexture: texture_2d<f32>;
-            
-            @fragment
-            fn fragmentMain(@location(0) color: vec4f, @location(1) uv: vec2f) -> @location(0) vec4<f32> 
-            {
-                var samp = textureSampleBaseClampToEdge(myTexture, mySampler, uv);
-                //samp.a = 1.0;
-                return samp * color;//vec4(0,0,0,1);
-            }
-        `,
-    });
-    const pipeline = device.createRenderPipeline({
+function createRenderPipeline(device, format, shaderModule) {
+    return device.createRenderPipeline({
         layout: "auto",
         vertex: {
             module: shaderModule,
@@ -157,6 +122,111 @@ async function createPipeline(device, format) {
             topology: "triangle-list",
         },
     });
+}
+async function createPipelineBackground(device, format) {
+    const shaderModule = device.createShaderModule({
+        code: `
+            struct Uniforms
+            {
+                modelViewMatrix: mat4x4f,
+                time: f32,
+            }
+            @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+            struct VertexOutput 
+            {
+                @builtin(position) position : vec4f,
+                @location(0) color: vec4f,
+                @location(1) uv: vec2f
+            }
+
+            @vertex
+            fn vertexMain(@location(0) position : vec4f, @location(1) color: vec4f, @location(2) uv: vec2f) -> VertexOutput 
+            {
+                var out: VertexOutput;
+                out.position = uniforms.modelViewMatrix * vec4<f32>(position.xy, 0.0, 1.0);
+                out.color = color;
+                out.uv = uv;
+                return out;
+            }
+
+            @group(0) @binding(1) var mySampler: sampler;
+            @group(0) @binding(2) var myTexture: texture_2d<f32>;
+            
+            fn lerpColor(c: vec3f, c1: vec3f, val: f32) -> vec3f
+            {
+                return val*c + (1.0-val)*c1;
+            }
+
+            fn fog(fragCoord: vec2f) -> vec3f
+            {
+                var iTime = uniforms.time;
+                var uv = fragCoord;
+                uv *= 8.0;
+                //Add distortion
+                for(var i = 1.0; i < 5.0; i+=1.0){ 
+                    uv.y += iTime*0.1;
+                    uv.x += 0.5*sin(iTime*0.1 + uv.y * i);
+                    uv.y += cos(iTime*0.1 + uv.x * i);
+                }
+            
+                var val = 0.5 + 0.5*cos(0.0*iTime + uv.x);
+                var col = lerpColor(vec3f(0.5,0.3,0.7), vec3f(0.1,0.1,0.1),val);
+            
+                return col;
+            }
+
+            @fragment
+            fn fragmentMain(@location(0) color: vec4f, @location(1) uv: vec2f) -> @location(0) vec4<f32> 
+            {
+                var r = textureSampleBaseClampToEdge(myTexture, mySampler, uv);
+                var colorOut = fog(uv);
+                return vec4f(colorOut, 1.0);
+            }
+        `,
+    });
+    const pipeline = createRenderPipeline(device, format, shaderModule);
+    return pipeline;
+}
+async function createPipeline(device, format) {
+    const shaderModule = device.createShaderModule({
+        code: `
+            struct Uniforms
+            {
+                modelViewMatrix: mat4x4f,
+                time: f32,
+            }
+            @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+            struct VertexOutput 
+            {
+                @builtin(position) position : vec4f,
+                @location(0) color: vec4f,
+                @location(1) uv: vec2f
+            }
+
+            @vertex
+            fn vertexMain(@location(0) position : vec4f, @location(1) color: vec4f, @location(2) uv: vec2f) -> VertexOutput 
+            {
+                var out: VertexOutput;
+                out.position = uniforms.modelViewMatrix * vec4<f32>(position.xy, 0.0, 1.0);
+                out.color = color;
+                out.uv = uv;
+                return out;
+            }
+
+            @group(0) @binding(1) var mySampler: sampler;
+            @group(0) @binding(2) var myTexture: texture_2d<f32>;
+            
+            @fragment
+            fn fragmentMain(@location(0) color: vec4f, @location(1) uv: vec2f) -> @location(0) vec4<f32> 
+            {
+                var samp = textureSampleBaseClampToEdge(myTexture, mySampler, uv);
+                return samp * color;
+            }
+        `,
+    });
+    const pipeline = createRenderPipeline(device, format, shaderModule);
     return pipeline;
 }
 function updateWorld(deltaTime, b) {
@@ -201,6 +271,7 @@ function updateWorld(deltaTime, b) {
             charHealth -= 1;
             if (charHealth <= 0) {
                 charEntity.alive = false;
+                music.pause();
             }
             break;
         }
@@ -289,14 +360,17 @@ function createVertexBuffer(device, buffer) {
     vertexBuffers.push(verticesBuffer);
     return verticesBuffer;
 }
-function draw(renderPass, transform, verticesBuffer, texture) {
+function draw(renderPass, transform, verticesBuffer, texture, pipeline = Pipeline) {
     var device = WebGpuObj.device;
-    var pipeline = Pipeline;
+    var rawBuffer = new Float32Array(20);
+    for (let i = 0; i < 16; ++i)
+        rawBuffer[i] = transform[i];
+    rawBuffer[16] = globalTime;
     const uniformBuffer = device.createBuffer({
-        size: 4 * 16,
+        size: 4 * 20,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    device.queue.writeBuffer(uniformBuffer, 0, transform.buffer, transform.byteOffset, transform.byteLength);
+    device.queue.writeBuffer(uniformBuffer, 0, rawBuffer.buffer, rawBuffer.byteOffset, rawBuffer.byteLength);
     // Create a sampler with linear filtering for smooth interpolation.
     const sampler = device.createSampler({
         magFilter: 'linear',
@@ -360,7 +434,7 @@ function drawText(renderPass, textString, mat, scale = 1.0, color = [1, 1, 1, 1]
         }
     }
 }
-function drawSprite(renderPass, transform, texture, color = [1, 1, 1, 1]) {
+function drawSprite(renderPass, transform, texture, color = [1, 1, 1, 1], pipeline = Pipeline) {
     const sprite = new Float32Array([
         -0.5, -0.5, 0, 1, color[0], color[1], color[2], color[3], 0, 1,
         -0.5, 0.5, 0, 1, color[0], color[1], color[2], color[3], 0, 0,
@@ -370,11 +444,14 @@ function drawSprite(renderPass, transform, texture, color = [1, 1, 1, 1]) {
         0.5, 0.5, 0, 1, color[0], color[1], color[2], color[3], 1, 0,
     ]);
     const verticesBuffer = createVertexBuffer(WebGpuObj.device, sprite);
-    draw(renderPass, transform, verticesBuffer, texture);
+    draw(renderPass, transform, verticesBuffer, texture, pipeline);
 }
 async function render() {
     const now = Date.now();
     const deltaTime = (now - LastFrameMS) / 1000;
+    if (!isNaN(deltaTime))
+        globalTime += deltaTime;
+    console.log(globalTime);
     LastFrameMS = now;
     var device = WebGpuObj.device;
     const commandEncoder = device.createCommandEncoder();
@@ -421,31 +498,34 @@ async function render() {
     mat = mat4.mul(orthoMat, mat);
     var mat1 = mat4.identity();
     mat1 = mat4.mul(orthoMat, mat1);
+    renderPass.setPipeline(PipelineBg);
+    drawSprite(renderPass, mat4.scale(mat4.identity(), [2, 2, 1]), blankTexture, [1, 1, 1, 1], PipelineBg);
     renderPass.setPipeline(Pipeline);
     // draw world
     var matGabe = mat4.identity();
     matGabe = mat4.mul(orthoMat, matGabe);
     mat4.scale(matGabe, [gabeRect.width, gabeRect.height, 1.0], matGabe);
     mat4.translate(matGabe, [0, -1, 0], matGabe);
-    drawSprite(renderPass, matGabe, gabeTexture, [0.3, 0.7, 0.3, 1]);
+    drawSprite(renderPass, matGabe, blankTexture, [0.3, 0.7, 0.3, 1]);
     //draw character
     if (charEntity.alive)
-        drawSprite(renderPass, mat, animeGirlTexture);
+        drawSprite(renderPass, mat, blankTexture);
     // draw UI
     for (let entity of entities) {
         let matEntity = mat4.clone(orthoMat);
         mat4.translate(matEntity, [entity.x, entity.y, 0], matEntity);
         mat4.scale(matEntity, [entity.rect.width, entity.rect.height, 1.0], matEntity);
-        var color = [0, 0, 1, 1];
+        var color = [0.63, 1.0, 0, 1];
         if (entity.type == EntityType.Enemy) {
             var enemy = entity;
             drawProgressBar(renderPass, enemy.health, enemy.maxHealth, { x: entity.x, y: entity.y + enemy.rect.height / 2 + 0.05, width: 0.3, height: 0.03 });
             color = [1, 0, 0, 1];
         }
         else if (entity.type == EntityType.Bullet)
-            color = [1, 1, 0, 1];
-        drawSprite(renderPass, matEntity, gabeTexture, color);
+            color = [0, 1, 1, 1];
+        drawSprite(renderPass, matEntity, blankTexture, color);
     }
+    // TODO: white text, more phases, art, restart button, start screen
     // slow cooldown bar
     drawProgressBar(renderPass, slowTime, 1.0, { x: -Width / Height + 0.16, y: 0.9, width: 0.3, height: 0.05 }, [0, 0, 0, 1], [0, 1, 1, 1]);
     // fps counter calc
@@ -505,8 +585,6 @@ function handleKeyDown(e) {
 var music = new Audio("./music/bg_music.mp3");
 var playing = false;
 function handleKeyUp(e) {
-    if (!playing)
-        music.play();
     switch (e.code) {
         case 'KeyW':
             WDown = false;
@@ -522,6 +600,28 @@ function handleKeyUp(e) {
             break;
         case 'Space':
             SpaceDown = false;
+            break;
+        case 'KeyR':
+            if (!charEntity.alive) {
+                if (!playing) {
+                    music.currentTime = 0;
+                    music.play();
+                }
+                entities.splice(0, entities.length);
+                bossFight.maxHealth = 1000;
+                bossFight.currentHealth = bossFight.maxHealth;
+                charEntity.x = 0;
+                charEntity.y = 1.0;
+                charEntity.vx = 0;
+                charEntity.vy = 0;
+                charEntity.ax = 0;
+                charEntity.ay = 0;
+                charEntity.alive = true;
+                charHealth = 1; // TODO: move all the character data to the entity
+                var waveHandler = new WaveHandler(bossFight, 1000, entities);
+                entities.push(waveHandler);
+                waveHandler.Start();
+            }
             break;
     }
 }
@@ -570,7 +670,7 @@ function shootBullet() {
     entities.push(entity);
 }
 async function main() {
-    glyphs = await parseBitmapFont("./font/font.txt");
+    glyphs = await parseBitmapFont("./font/white_font.txt");
     WDown = false;
     ADown = false;
     SDown = false;
@@ -584,17 +684,15 @@ async function main() {
     charEntity.y = 1.0;
     charEntity.rect.width = 0.1;
     charEntity.rect.height = 0.2;
-    charEntity.alive = true;
+    charEntity.alive = false;
     charEntity.type = EntityType.Player;
     WebGpuObj = await initWebGPU();
     Pipeline = await createPipeline(WebGpuObj.device, WebGpuObj.format);
+    PipelineBg = await createPipelineBackground(WebGpuObj.device, WebGpuObj.format);
     animeGirlTexture = await createTexture('./megaphone_girl.png');
     gabeTexture = await createTexture('./IMG_3372.png');
-    fontTexture = await createTexture('./font/font.png');
+    fontTexture = await createTexture('./font/white_font.png');
     await loadUIAssets();
-    bossFight.maxHealth = 1000;
-    bossFight.currentHealth = bossFight.maxHealth;
-    entities.push(new WaveHandler(bossFight, 1000, entities));
     requestAnimationFrame(render);
 }
 main();

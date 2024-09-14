@@ -2,7 +2,7 @@ import { Rect, } from "collision";
 import { drawSprite, createTexture, ratio } from "web_gpu";
 import { mat4 } from 'wgpu-matrix';
 
-export { drawProgressBar, loadUIAssets }
+export { drawProgressBar, loadUIAssets, blankTexture }
 
 // health bars
 // particles
@@ -13,7 +13,7 @@ export { drawProgressBar, loadUIAssets }
 
 // can be used for loading, health, etc
 
-var progressBar: GPUTexture;
+var blankTexture: GPUTexture;
 
 function drawProgressBar(renderPass: GPURenderPassEncoder, val: number, max: number, rect: Rect, 
     bgColor: [number,number,number,number] = [0.2, 0.2, 0.2, 1], 
@@ -22,16 +22,16 @@ function drawProgressBar(renderPass: GPURenderPassEncoder, val: number, max: num
     var transform = mat4.ortho(-ratio, ratio, -1.0, 1.0, 0.0, 5.0);
     mat4.translate(transform, [rect.x, rect.y, 0], transform);
     mat4.scale(transform, [rect.width, rect.height, 1], transform);
-    drawSprite(renderPass, transform, progressBar, bgColor);
+    drawSprite(renderPass, transform, blankTexture, bgColor);
 
     var pct = val/max;
     pct = Math.max(pct, 0);
     mat4.translate(transform, [-0.5*(1-pct), 0, 0], transform);
     mat4.scale(transform, [pct, 1, 1], transform);
-    drawSprite(renderPass, transform, progressBar, fgColor);
+    drawSprite(renderPass, transform, blankTexture, fgColor);
 }
 
 async function loadUIAssets()
 {
-    progressBar = await createTexture('./white.png');
+    blankTexture = await createTexture('./white.png');
 }
