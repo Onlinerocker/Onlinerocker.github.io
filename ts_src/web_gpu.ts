@@ -679,7 +679,13 @@ async function render()
     drawText(renderPass, "Boss Health", bossHealthMat, 0.5);
     drawProgressBar(renderPass, bossFight.currentHealth, bossFight.maxHealth, {x: 0, y: -0.95, width: 1.9*Width/Height, height:0.05}, [0,0,0,1], [1,0,0,1]);
 
-    if (bossFight.currentHealth <= 0)
+    if (!charEntity.alive)
+    {
+        let preventedMat = mat4.identity();
+        drawText(renderPass, "Press R to fight!", mat4.translate(preventedMat, [-0.51, 0.085, 0]), 1.0, [0, 0, 0, 1]);
+        drawText(renderPass, "Press R to fight!", mat4.translate(preventedMat, [-0.52, 0.1, 0]), 1.0);
+    }
+    else if (bossFight.currentHealth <= 0)
     {
         let preventedMat = mat4.identity();
         drawText(renderPass, "INVADER EXTERMINATED", mat4.translate(preventedMat, [-0.9, 0, 0]), 1.0);
