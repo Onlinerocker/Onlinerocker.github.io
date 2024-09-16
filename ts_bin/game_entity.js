@@ -7,6 +7,7 @@ var EntityType;
     EntityType[EntityType["Enemy"] = 2] = "Enemy";
     EntityType[EntityType["Player"] = 3] = "Player";
     EntityType[EntityType["Projectile"] = 4] = "Projectile";
+    EntityType[EntityType["BigEnemy"] = 5] = "BigEnemy";
 })(EntityType || (EntityType = {}));
 // TODO: move rects to game
 class GameEntity {
@@ -259,6 +260,7 @@ class BigEnemy extends Enemy {
         super(x, y, vx, vy, ax, ay, rect, worldEntities, health);
         this.loop = 0;
         this.shootDir = [1, 0];
+        this.type = EntityType.BigEnemy;
     }
     Update(deltaTime) {
         super.Update(deltaTime);

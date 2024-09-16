@@ -9,6 +9,7 @@ enum EntityType
     Enemy,
     Player,
     Projectile,
+    BigEnemy,
 }
 
 // TODO: move rects to game
@@ -353,6 +354,7 @@ class BigEnemy extends Enemy
         worldEntities: Array<GameEntity>, health: number = 10)
     {
         super(x,y,vx,vy,ax,ay,rect,worldEntities,health);
+        this.type = EntityType.BigEnemy;
     }
 
     public Update(deltaTime: number)

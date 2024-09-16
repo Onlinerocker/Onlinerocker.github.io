@@ -35,6 +35,7 @@ var charHealth: number = 1;
 var charShootTimer: number = 0;
 var slowTime: number = 0;
 var slowRecharging: boolean = true;
+var charFacing: number = 1;
 
 var canvas: HTMLCanvasElement;
 const Width:number = 800;
@@ -44,6 +45,10 @@ var ratio: number;
 var gabeTexture: GPUTexture;
 var animeGirlTexture: GPUTexture;
 var fontTexture: GPUTexture;
+var charTexture: GPUTexture;
+var bulletTexture: GPUTexture;
+var bigEnemyTexture: GPUTexture;
+var smallEnemyTexture: GPUTexture;
 
 var glyphs: Map<string, GlyphInfo>;
 var vertexBuffers: Array<GPUBuffer> = new Array();
@@ -293,10 +298,12 @@ function updateWorld(deltaTime: number, b: Rect)
     if (ADown)
     {
         dir[0] -= 1.0;
+        if (!lmbDown) charFacing = 1;
     }
     else if (DDown)
     {
         dir[0] += 1.0;
+        if (!lmbDown) charFacing = -1;
     }
 
     charShootTimer -= deltaTime;
@@ -344,7 +351,7 @@ function updateWorld(deltaTime: number, b: Rect)
         for (var j = 0; j < entities.length; ++j)
         {
             let entityOther = entities[j];
-            if (entityOther.type == EntityType.Enemy 
+            if ((entityOther.type == EntityType.Enemy || entityOther.type == EntityType.BigEnemy)
                 && entity.type == EntityType.Bullet 
                 && entityOther.alive
                 && isColliding(entity.rect, entityOther.rect))
@@ -353,7 +360,7 @@ function updateWorld(deltaTime: number, b: Rect)
 
                 var enemy = (entityOther as Enemy);
                 enemy.health -= 1;
-                if (enemy.health <= 0)
+                if (enemy.health <= 0 || bossFight.currentHealth <= 0)
                 {
                     bossFight.currentHealth -= enemy.maxHealth;
                     enemy.alive = false;
@@ -365,7 +372,7 @@ function updateWorld(deltaTime: number, b: Rect)
 
         // waves
         // progression triggered by boss health progression
-        var outOfBounds: boolean = entity.x > Width/Height || entity.x < -Width/Height || entity.y < -1.0 || entity.y > 1.0;
+        var outOfBounds: boolean = entity.x > Width/Height || entity.x < -Width/Height || entity.y < -1.0 || entity.y > 1.0 || bossFight.currentHealth <= 0;
         if (outOfBounds && (entity.type == EntityType.Bullet || entity.type == EntityType.Projectile))
         {
             entity.alive = false;
@@ -623,9 +630,15 @@ async function render()
 
     var mat = mat4.identity();
     mat4.translate(mat, [charEntity.x, charEntity.y, 0.0], mat);
+    var matChar = mat4.identity();
+
+    // 0.1, 0.2 -> 0.8 1.0
+    mat4.scale(mat, [charFacing * charEntity.rect.width*3.52, charEntity.rect.height*2.2, 1.0], matChar)
+    mat4.translate(matChar, [0.08, 0.12, 0], matChar);
     mat4.scale(mat, [charEntity.rect.width, charEntity.rect.height, 1.0], mat)
     var orthoMat = mat4.ortho(-ratio, ratio, -1.0, 1.0, 0.0, 5.0);
     mat = mat4.mul(orthoMat, mat);
+    matChar = mat4.mul(orthoMat, matChar);
 
     var mat1 = mat4.identity();
     mat1 = mat4.mul(orthoMat, mat1);
@@ -644,24 +657,44 @@ async function render()
     
     //draw character
     if (charEntity.alive)
-        drawSprite(renderPass, mat, blankTexture);
+    {
+        //drawSprite(renderPass, mat, blankTexture); //<-- hit point visual
+        drawSprite(renderPass, matChar, charTexture);
+    }
+        
 
-    // draw UI
+    // draw entities
     for (let entity of entities)
     {
         let matEntity = mat4.clone(orthoMat);
         mat4.translate(matEntity, [entity.x, entity.y, 0], matEntity);
-        mat4.scale(matEntity, [entity.rect.width, entity.rect.height, 1.0], matEntity)
-        var color: [number,number,number,number] = [0.63,1.0,0,1];
-        if (entity.type == EntityType.Enemy)
+        let dir = 1;
+        let scale = 1;
+        if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy) dir = entity.x > 0 ? -1 : 1;
+        if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy) scale = 1.3;
+        mat4.scale(matEntity, [dir * entity.rect.width * scale, entity.rect.height * scale, 1.0], matEntity)
+        var color: [number,number,number,number] = [1,0.5,0.5,1];
+        var texture = blankTexture;
+        if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy)
         {
             var enemy = entity as Enemy;
+            texture = entity.type == EntityType.BigEnemy ? bigEnemyTexture : smallEnemyTexture;
             drawProgressBar(renderPass, enemy.health, enemy.maxHealth, {x: entity.x, y: entity.y + enemy.rect.height/2 + 0.05, width: 0.3, height: 0.03});
-            color = [1,0,0,1];
+            color = [1,1,1,1];
         } 
-        else if (entity.type == EntityType.Bullet) color = [0,1,1,1];
-        drawSprite(renderPass, matEntity, blankTexture, color);
+        else if (entity.type == EntityType.Bullet)
+        {
+            color = [1,1,1,1];
+            texture = bulletTexture;
+        }
+        else if (entity.type == EntityType.Projectile)
+        {
+            texture = bulletTexture;
+        }
+        drawSprite(renderPass, matEntity, texture, color);
     }
+
+    // draw UI
     // TODO: white text, more phases, art, restart button, start screen
     // slow cooldown bar
     drawProgressBar(renderPass, slowTime, 1.0, {x:-Width/Height + 0.16, y:0.9, width:0.3, height:0.05}, [0,0,0,1], [0,1,1,1]);
@@ -831,6 +864,8 @@ function shootBullet()
     x -= charEntity.x;
     y -= charEntity.y;
     let dir: Float32Array = vec2.create(x, y);
+    charFacing = -1*Math.sign(x);
+
     vec2.normalize(dir, dir);
     let entity: GameEntity = new GameEntity();
     entity.x = charEntity.x;
@@ -872,6 +907,12 @@ async function main()
     animeGirlTexture = await createTexture('./megaphone_girl.png');
     gabeTexture = await createTexture('./IMG_3372.png');
     fontTexture = await createTexture('./font/white_font.png');
+
+    charTexture = await createTexture('./img/golden_v2.png');
+    bulletTexture = await createTexture('./img/bullet.png');
+    bigEnemyTexture = await createTexture('./img/enemy_big_v1.png');
+    smallEnemyTexture = await createTexture('./img/enemy_small.png');
+
     await loadUIAssets();
 
     requestAnimationFrame(render);
