@@ -2,8 +2,8 @@
 // CHICKEN MACHINE GUN BATTLE ARENA ALIEN EXTERMINATION SIMULATOR 2024
 import { mat4, vec2 } from 'wgpu-matrix';
 import { parseBitmapFont, fillGlyphVertexBuffer } from 'font';
-import { isColliding, moveAndHandleCollision } from 'collision';
-import { Enemy, GameEntity, EntityType, WaveHandler, BossFight } from 'game_entity';
+import { Rect, isColliding, moveAndHandleCollision } from 'collision';
+import { Enemy, GameEntity, EntityType, WaveHandler, BossFight, HitBox, CharacterEntity, ParticleEntity } from 'game_entity';
 import { blankTexture, drawProgressBar, loadUIAssets } from 'game_ui';
 export { drawSprite, createTexture, ratio };
 var WebGpuObj;
@@ -17,13 +17,19 @@ var SDown;
 var DDown;
 var SpaceDown;
 var lmbDown;
+var ShiftLeftDown;
 var mouseX;
 var mouseY;
+var charEntity = new CharacterEntity();
 var charHealth = 1;
 var charShootTimer = 0;
 var slowTime = 0;
 var slowRecharging = true;
 var charFacing = 1;
+var charShooting = false;
+var charSwingTime = 0;
+var charSwingTimeMax = 1.0;
+var charSwingEntity;
 var canvas;
 const Width = 800;
 const Height = 600;
@@ -36,11 +42,10 @@ var bulletTexture;
 var bigEnemyTexture;
 var smallEnemyTexture;
 var glyphs;
-var vertexBuffers = new Array();
+var glyphBuffers = new Map();
 var lastFpsCalc = 0;
 var displayText = "";
 var accTime = 0;
-var charEntity = new GameEntity();
 var entities = new Array();
 var deadEntities = new Array();
 var globalTime = 0;
@@ -113,10 +118,12 @@ function createRenderPipeline(device, format, shaderModule) {
                     format: format,
                     blend: {
                         color: {
-                            srcFactor: 'one',
+                            operation: 'add',
+                            srcFactor: 'src-alpha',
                             dstFactor: 'one-minus-src-alpha' //color = src_alpha + dst (1 - src_alpha)
                         },
                         alpha: {
+                            operation: 'add',
                             srcFactor: 'one',
                             dstFactor: 'one-minus-src-alpha' //alpha = src_alpha + dst (1 - src_alpha)
                         },
@@ -134,6 +141,7 @@ async function createPipelineBackground(device, format) {
             struct Uniforms
             {
                 modelViewMatrix: mat4x4f,
+                color: vec4f,
                 time: f32,
             }
             @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -199,6 +207,7 @@ async function createPipeline(device, format) {
             struct Uniforms
             {
                 modelViewMatrix: mat4x4f,
+                color: vec4f,
                 time: f32,
             }
             @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -227,42 +236,76 @@ async function createPipeline(device, format) {
             fn fragmentMain(@location(0) color: vec4f, @location(1) uv: vec2f) -> @location(0) vec4<f32> 
             {
                 var samp = textureSampleBaseClampToEdge(myTexture, mySampler, uv);
-                return samp * color;
+                samp *= color * uniforms.color;
+                return samp;
             }
         `,
     });
     const pipeline = createRenderPipeline(device, format, shaderModule);
     return pipeline;
 }
+function killPlayer() {
+    charEntity.alive = false;
+    createRandomParticles(charEntity.x, charEntity.y, 6, 3, 0.1, [1, 0, 0, 1], true);
+    music.pause();
+}
 function updateWorld(deltaTime, b) {
+    let isShootingKeybind = lmbDown;
+    let isSwingingKeybind = ShiftLeftDown;
+    charShooting = isShootingKeybind;
+    if (!charEntity.charSwinging && isSwingingKeybind) {
+        charEntity.charSwinging = true;
+        var swingRect = new Rect();
+        swingRect.height = charEntity.rect.height;
+        swingRect.width = charEntity.rect.width * 2;
+        swingRect.x = charEntity.x - swingRect.width / 2;
+        swingRect.y = charEntity.y - swingRect.height / 2;
+        swingRect.x -= charFacing * swingRect.width;
+        charSwingEntity = new HitBox(-charFacing * swingRect.width, 0, 0, 0, 0, 0, swingRect, entities);
+        charSwingEntity.parent = charEntity;
+        entities.push(charSwingEntity);
+    }
+    else if (charEntity.charSwinging) {
+        charSwingTime += deltaTime;
+        if (charSwingTime >= charSwingTimeMax) {
+            charSwingTime = 0;
+            charEntity.charSwinging = false;
+            charSwingEntity.alive = false;
+        }
+    }
     if (!Number.isNaN(deltaTime)) {
-        charEntity.vy -= 450.0 * deltaTime;
+        charEntity.vy += charEntity.ay * deltaTime;
     }
     let dir = vec2.create(0, 0);
     if (WDown) {
     }
     else if (SDown) {
     }
+    charEntity.vx = 0;
     if (ADown) {
-        dir[0] -= 1.0;
-        if (!lmbDown)
+        charEntity.vx = -1.0;
+        if (!charShooting)
             charFacing = 1;
     }
     else if (DDown) {
-        dir[0] += 1.0;
-        if (!lmbDown)
+        charEntity.vx = 1.0;
+        if (!charShooting)
             charFacing = -1;
     }
     charShootTimer -= deltaTime;
-    if (lmbDown && charShootTimer <= 0 && charEntity.alive) {
+    if (charShooting && charShootTimer <= 0 && charEntity.alive) {
         shootBullet();
         charShootTimer = 0.05;
     }
     vec2.normalize(dir, dir);
     if (!Number.isNaN(deltaTime)) {
         //console.log(charEntity.vy);
-        dir[1] += charEntity.vy * deltaTime;
+        //dir[1] += charEntity.vy * deltaTime;
     }
+    charEntity.Update(deltaTime);
+    dir[0] = charEntity.vx;
+    dir[1] = charEntity.vy * (!Number.isNaN(deltaTime) ? deltaTime : 0);
+    //console.log("char vx " + charEntity.vx);
     if (vec2.len(dir) > 0) {
         moveAndHandleCollision(charEntity, b, deltaTime, dir);
         charEntity.x = charEntity.rect.x + (charEntity.rect.width / 2); //+= dir[0]*deltaTime;
@@ -274,13 +317,12 @@ function updateWorld(deltaTime, b) {
     for (let i = 0; i < entities.length; ++i) {
         let entity = entities[i];
         if (entity.type == EntityType.Projectile
-            && charEntity.alive
+            && charEntity.alive && !charEntity.charSwinging
             && isColliding(entity.rect, { x: charEntity.x, y: charEntity.y, width: 0, height: 0 })) {
             entity.alive = false;
             charHealth -= 1;
             if (charHealth <= 0) {
-                charEntity.alive = false;
-                music.pause();
+                killPlayer();
             }
             break;
         }
@@ -293,22 +335,43 @@ function updateWorld(deltaTime, b) {
                 entity.alive = false;
                 var enemy = entityOther;
                 enemy.health -= 1;
-                if (enemy.health <= 0 || bossFight.currentHealth <= 0) {
-                    bossFight.currentHealth -= enemy.maxHealth;
-                    enemy.alive = false;
-                    deadEntities.push(j);
+                enemy.SetFlashing(true);
+                if (enemy.health <= 0) {
+                    bossFight.currentHealth -= enemy.maxHealth; //we need to do this for swing attacks too... 
+                    //enemy.alive = false;
+                    //deadEntities.push(j);
                 }
                 //break; lets say we can damage more than one
             }
         }
+        if (bossFight.currentHealth <= 0 && (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy)) {
+            entity.alive = false;
+        }
         // waves
         // progression triggered by boss health progression
         var outOfBounds = entity.x > Width / Height || entity.x < -Width / Height || entity.y < -1.0 || entity.y > 1.0 || bossFight.currentHealth <= 0;
-        if (outOfBounds && (entity.type == EntityType.Bullet || entity.type == EntityType.Projectile)) {
+        if (!entity.keepOffScreen && outOfBounds && (entity.type == EntityType.Bullet || entity.type == EntityType.Projectile || entity.type == EntityType.Particle)) {
             entity.alive = false;
         }
         if (!entity.alive) {
             deadEntities.push(i);
+        }
+    }
+    var outOfBoundsPlayer = charEntity.x > Width / Height * 1.1 || charEntity.x < -Width / Height * 1.1 || charEntity.y < -1.1 || charEntity.y > 1.1;
+    if (charEntity.alive && outOfBoundsPlayer) {
+        killPlayer();
+    }
+    for (let i of deadEntities) {
+        let e = entities[i];
+        if (e.type == EntityType.Bullet) {
+            createRandomParticles(e.x, e.y, 1, 1, 1);
+            createRandomParticles(e.x, e.y, 1, 4, 4, [1, 1, 0, 1], false, 0.4, 0);
+        }
+        else if (e.type == EntityType.BigEnemy) {
+            createRandomParticles(e.x, e.y, 6, 3, 0.1);
+        }
+        else if (e.type == EntityType.Enemy) {
+            createRandomParticles(e.x, e.y, 8, 2, 0.1);
         }
     }
     let back = entities.length - 1;
@@ -319,7 +382,6 @@ function updateWorld(deltaTime, b) {
             temp = entities[back];
         }
         if (back == i) {
-            entities.splice(back, entities.length - back);
             break;
         }
         else {
@@ -327,6 +389,8 @@ function updateWorld(deltaTime, b) {
             entities[i] = temp;
         }
     }
+    if (deadEntities.length > 0)
+        entities.splice(back, entities.length - back);
     deadEntities.splice(0, deadEntities.length);
     if (false) {
         var inc = Math.floor(Math.random() * 3 + 1);
@@ -366,17 +430,20 @@ function createVertexBuffer(device, buffer) {
     });
     new Float32Array(verticesBuffer.getMappedRange()).set(buffer);
     verticesBuffer.unmap(); // since we already set the data we don't need the mapping anymore, I guess
-    vertexBuffers.push(verticesBuffer);
     return verticesBuffer;
 }
-function draw(renderPass, transform, verticesBuffer, texture, pipeline = Pipeline) {
+function draw(renderPass, transform, verticesBuffer, texture, pipeline = Pipeline, color = [1, 1, 1, 1]) {
     var device = WebGpuObj.device;
-    var rawBuffer = new Float32Array(20);
+    var rawBuffer = new Float32Array(24);
     for (let i = 0; i < 16; ++i)
         rawBuffer[i] = transform[i];
-    rawBuffer[16] = globalTime;
+    rawBuffer[16] = color[0];
+    rawBuffer[17] = color[1];
+    rawBuffer[18] = color[2];
+    rawBuffer[19] = color[3];
+    rawBuffer[20] = globalTime;
     const uniformBuffer = device.createBuffer({
-        size: 4 * 20,
+        size: 4 * 24,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     device.queue.writeBuffer(uniformBuffer, 0, rawBuffer.buffer, rawBuffer.byteOffset, rawBuffer.byteLength);
@@ -410,12 +477,12 @@ function drawText(renderPass, textString, mat, scale = 1.0, color = [1, 1, 1, 1]
     var mat1 = mat4.copy(mat);
     var device = WebGpuObj.device;
     const text = new Float32Array([
-        -0.5, -0.5, 0, 1, color[0], color[1], color[2], color[3], 0, 1,
-        -0.5, 0.5, 0, 1, color[0], color[1], color[2], color[3], 0, 0,
-        0.5, -0.5, 0, 1, color[0], color[1], color[2], color[3], 1, 1,
-        0.5, -0.5, 0, 1, color[0], color[1], color[2], color[3], 1, 1,
-        -0.5, 0.5, 0, 1, color[0], color[1], color[2], color[3], 0, 0,
-        0.5, 0.5, 0, 1, color[0], color[1], color[2], color[3], 1, 0,
+        -0.5, -0.5, 0, 1, 1, 1, 1, 1, 0, 1,
+        -0.5, 0.5, 0, 1, 1, 1, 1, 1, 0, 0,
+        0.5, -0.5, 0, 1, 1, 1, 1, 1, 1, 1,
+        0.5, -0.5, 0, 1, 1, 1, 1, 1, 1, 1,
+        -0.5, 0.5, 0, 1, 1, 1, 1, 1, 0, 0,
+        0.5, 0.5, 0, 1, 1, 1, 1, 1, 1, 0,
     ]);
     for (let c of textString) {
         // need to scale each glyph the right size
@@ -425,7 +492,6 @@ function drawText(renderPass, textString, mat, scale = 1.0, color = [1, 1, 1, 1]
         let glyphUvs;
         if (glyph) {
             //glyphUvs = getGlyphUv(glyph);
-            fillGlyphVertexBuffer(text, glyph);
             //var mat1Scaled = mat4.identity();
             if (glyph.id == 32) {
                 mat4.scale(mat1, [scale / 10, scale / 10, 1], mat1);
@@ -435,15 +501,20 @@ function drawText(renderPass, textString, mat, scale = 1.0, color = [1, 1, 1, 1]
             }
             mat4.scale(mat1, [scale / 10, scale / 10, 1], mat1);
             mat4.translate(mat1, [glyph.xoffset / 50, -glyph.yoffset / 50, 0], mat1);
-            const verticesBufferText = createVertexBuffer(device, text);
-            draw(renderPass, mat1, verticesBufferText, fontTexture);
+            var verticesBufferText = glyphBuffers.get(c);
+            if (verticesBufferText == undefined) {
+                fillGlyphVertexBuffer(text, glyph);
+                verticesBufferText = createVertexBuffer(device, text);
+                glyphBuffers.set(c, verticesBufferText);
+            }
+            draw(renderPass, mat1, verticesBufferText, fontTexture, Pipeline, color);
             mat4.translate(mat1, [glyph.xadvance / 50, 0, 0], mat1);
             mat4.translate(mat1, [-glyph.xoffset / 50, glyph.yoffset / 50, 0], mat1);
             mat4.scale(mat1, [10 / scale, 10 / scale, 1], mat1);
         }
     }
 }
-function drawSprite(renderPass, transform, texture, color = [1, 1, 1, 1], pipeline = Pipeline) {
+function createSpriteBuffer(color = [1, 1, 1, 1]) {
     const sprite = new Float32Array([
         -0.5, -0.5, 0, 1, color[0], color[1], color[2], color[3], 0, 1,
         -0.5, 0.5, 0, 1, color[0], color[1], color[2], color[3], 0, 0,
@@ -453,21 +524,50 @@ function drawSprite(renderPass, transform, texture, color = [1, 1, 1, 1], pipeli
         0.5, 0.5, 0, 1, color[0], color[1], color[2], color[3], 1, 0,
     ]);
     const verticesBuffer = createVertexBuffer(WebGpuObj.device, sprite);
-    draw(renderPass, transform, verticesBuffer, texture, pipeline);
+    return verticesBuffer;
 }
+var spriteBuffer;
+function drawSprite(renderPass, transform, texture, color = [1, 1, 1, 1], pipeline = Pipeline, cache = false) {
+    if (!spriteBuffer) {
+        spriteBuffer = createSpriteBuffer();
+    }
+    const verticesBuffer = spriteBuffer;
+    draw(renderPass, transform, verticesBuffer, texture, pipeline, color);
+}
+function createRandomParticles(x, y, count, scale = 1, fadeRate = 0, color = [1, 0, 0, 1], stayAlive = false, velScale = 1, gravMod = 1) {
+    for (let i = 0; i < count; ++i) {
+        let vxRand = -0.5 + Math.random() * 1;
+        let vyRand = -0.5 + Math.random() * 1;
+        vxRand *= scale * velScale;
+        vyRand *= scale * velScale;
+        let rect = new Rect();
+        rect.x = 0;
+        rect.y = 0;
+        rect.width = 0.025 * scale;
+        rect.height = 0.025 * scale;
+        let part = new ParticleEntity(x, y, vxRand, vyRand, 0, -4.5 * gravMod, rect);
+        part.keepOffScreen = stayAlive;
+        part.fadeRate = fadeRate;
+        part.color = color;
+        entities.push(part);
+    }
+}
+let flipStart = 0;
 async function render() {
-    const now = Date.now();
+    const now = performance.now();
+    const flipTime = now - flipStart;
+    //if (flipTime > 10) console.log("flip time " + flipTime);
     const deltaTime = (now - LastFrameMS) / 1000;
     if (!isNaN(deltaTime))
         globalTime += deltaTime;
-    console.log(globalTime);
+    //console.log(deltaTime);
     LastFrameMS = now;
     var device = WebGpuObj.device;
     const commandEncoder = device.createCommandEncoder();
     const renderPass = commandEncoder.beginRenderPass({
         colorAttachments: [{
                 view: WebGpuObj.context.getCurrentTexture().createView(),
-                clearValue: { r: 1.0, g: 1.0, b: 1.0, a: 1.0 },
+                clearValue: { r: 1.0, g: 1.0, b: 1.0, a: 0.0 },
                 loadOp: "clear",
                 storeOp: "store",
             }],
@@ -525,11 +625,21 @@ async function render() {
     if (charEntity.alive) {
         //drawSprite(renderPass, mat, blankTexture); //<-- hit point visual
         drawSprite(renderPass, matChar, charTexture);
+        if (charEntity.charSwinging) {
+            var matSwing = mat4.identity();
+            mat4.translate(matSwing, [charSwingEntity.x, charSwingEntity.y, 0.0], matSwing);
+            mat4.scale(matSwing, [charSwingEntity.rect.width, charSwingEntity.rect.height, 1], matSwing);
+            mat4.mul(orthoMat, matSwing, matSwing);
+            drawSprite(renderPass, matSwing, blankTexture);
+        }
     }
     // draw entities
     for (let entity of entities) {
         let matEntity = mat4.clone(orthoMat);
         mat4.translate(matEntity, [entity.x, entity.y, 0], matEntity);
+        if (entity.type == EntityType.Particle) {
+            mat4.rotateZ(matEntity, entity.rotation, matEntity);
+        }
         let dir = 1;
         let scale = 1;
         if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy)
@@ -537,10 +647,12 @@ async function render() {
         if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy)
             scale = 1.3;
         mat4.scale(matEntity, [dir * entity.rect.width * scale, entity.rect.height * scale, 1.0], matEntity);
-        var color = [1, 0.5, 0.5, 1];
+        var color = [5, 0.5, 0.5, 1];
         var texture = blankTexture;
+        var flashing = false;
         if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy) {
             var enemy = entity;
+            flashing = enemy.GetFlashing();
             texture = entity.type == EntityType.BigEnemy ? bigEnemyTexture : smallEnemyTexture;
             drawProgressBar(renderPass, enemy.health, enemy.maxHealth, { x: entity.x, y: entity.y + enemy.rect.height / 2 + 0.05, width: 0.3, height: 0.03 });
             color = [1, 1, 1, 1];
@@ -552,24 +664,39 @@ async function render() {
         else if (entity.type == EntityType.Projectile) {
             texture = bulletTexture;
         }
-        drawSprite(renderPass, matEntity, texture, color);
+        else if (entity.type == EntityType.HitBox) {
+            continue;
+        }
+        else if (entity.type == EntityType.Particle) {
+            color = entity.color;
+            texture = blankTexture;
+        }
+        drawSprite(renderPass, matEntity, texture, flashing ? [1, 0.5, 0.5, 1] : color);
     }
-    // draw UI
-    // TODO: white text, more phases, art, restart button, start screen
-    // slow cooldown bar
-    drawProgressBar(renderPass, slowTime, 1.0, { x: -Width / Height + 0.16, y: 0.9, width: 0.3, height: 0.05 }, [0, 0, 0, 1], [0, 1, 1, 1]);
     // fps counter calc
     if (!Number.isNaN(deltaTime))
         lastFpsCalc += deltaTime;
     if (lastFpsCalc > 0.1) {
         lastFpsCalc = 0.0;
-        displayText = (1 / deltaTime).toPrecision(3) + "fps";
+        let fps = (1 / deltaTime);
+        displayText = fps.toPrecision(3) + "fps";
+        if (fps < 100.0) {
+            console.log(deltaTime + " is delta");
+            console.log(fps + " is low");
+        }
     }
+    //garbage collector is causing hitches!!!
+    // draw UI
+    // TODO: white text, more phases, art, restart button, start screen
+    // slow cooldown bar
+    //drawProgressBar(renderPass, slowTime, 1.0, {x:-Width/Height + 0.16, y:0.9, width:0.3, height:0.05}, [0,0,0,1], [0,1,1,1]);
     // boss health
-    var bossHealthMat = mat4.identity();
-    mat4.translate(bossHealthMat, [-0.95, -0.85, 0], bossHealthMat);
-    drawText(renderPass, "Boss Health", bossHealthMat, 0.5);
-    drawProgressBar(renderPass, bossFight.currentHealth, bossFight.maxHealth, { x: 0, y: -0.95, width: 1.9 * Width / Height, height: 0.05 }, [0, 0, 0, 1], [1, 0, 0, 1]);
+    if (charEntity.alive) {
+        var bossHealthMat = mat4.identity();
+        mat4.translate(bossHealthMat, [-0.95, -0.85, 0], bossHealthMat);
+        drawText(renderPass, "Boss Health", bossHealthMat, 0.5);
+        drawProgressBar(renderPass, bossFight.currentHealth, bossFight.maxHealth, { x: 0, y: -0.95, width: 1.9 * Width / Height, height: 0.05 }, [0, 0, 0, 1], [1, 0, 0, 1]);
+    }
     if (!charEntity.alive) {
         let preventedMat = mat4.identity();
         drawText(renderPass, "Press R to fight!", mat4.translate(preventedMat, [-0.51, 0.085, 0]), 1.0, [0, 0, 0, 1]);
@@ -582,20 +709,12 @@ async function render() {
     // fps counter
     mat4.translate(mat1, [-Width / Height, 1.0, 0], mat1);
     drawText(renderPass, displayText, mat1, 0.5);
-    mat4.translate(mat1, [0, -0.2, 0], mat1);
-    if (isColliding(gabeRect, charEntity.rect)) {
-        drawText(renderPass, "colliding", mat1, 0.5);
-    }
     renderPass.end();
     device.queue.submit([commandEncoder.finish()]);
-    for (let buff of vertexBuffers) {
-        buff.destroy();
-    }
-    vertexBuffers.splice(0, vertexBuffers.length);
     requestAnimationFrame(render);
 }
 function handleKeyDown(e) {
-    console.log(e.code);
+    //console.log(e.code);
     switch (e.code) {
         case 'KeyW':
             if (!WDown) {
@@ -614,6 +733,9 @@ function handleKeyDown(e) {
             break;
         case 'Space':
             SpaceDown = true;
+            break;
+        case 'ShiftLeft':
+            ShiftLeftDown = true;
             break;
     }
 }
@@ -636,6 +758,9 @@ function handleKeyUp(e) {
         case 'Space':
             SpaceDown = false;
             break;
+        case 'ShiftLeft':
+            ShiftLeftDown = false;
+            break;
         case 'KeyR':
             if (!charEntity.alive) {
                 if (!playing) {
@@ -650,7 +775,7 @@ function handleKeyUp(e) {
                 charEntity.vx = 0;
                 charEntity.vy = 0;
                 charEntity.ax = 0;
-                charEntity.ay = 0;
+                charEntity.ay = -450;
                 charEntity.alive = true;
                 charHealth = 1; // TODO: move all the character data to the entity
                 var waveHandler = new WaveHandler(bossFight, 1000, entities);
@@ -722,6 +847,7 @@ async function main() {
     charEntity.rect.height = 0.2;
     charEntity.alive = false;
     charEntity.type = EntityType.Player;
+    charEntity.ay = -450;
     WebGpuObj = await initWebGPU();
     Pipeline = await createPipeline(WebGpuObj.device, WebGpuObj.format);
     PipelineBg = await createPipelineBackground(WebGpuObj.device, WebGpuObj.format);
