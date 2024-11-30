@@ -1,6 +1,7 @@
 import { vec2 } from 'wgpu-matrix';
 import { isColliding } from 'collision';
-export { EntityType, GameEntity, Enemy, BigEnemy, WaveHandler, BossFight, HitBox, CharacterEntity, ParticleEntity };
+import { createUniformBuffer } from 'web_gpu';
+export { EntityType, GameEntity, Enemy, BigEnemy, WaveHandler, BossFight, HitBox, CharacterEntity, ParticleEntity, IntroAnimation };
 var EntityType;
 (function (EntityType) {
     EntityType[EntityType["None"] = 0] = "None";
@@ -33,6 +34,7 @@ class GameEntity {
         this.vy = vy;
         this.rect = rect;
         this.type = type;
+        this.uniformBuffer = createUniformBuffer();
     }
     static Copy(other) {
         var obj = new GameEntity();
@@ -68,7 +70,7 @@ class ParticleEntity extends GameEntity {
     }
     Update(deltaTime) {
         super.Update(deltaTime);
-        this.rotation += deltaTime * 4;
+        this.rotation += deltaTime * 4 * this.angularVelocity;
         if (this.rotation > Math.PI * 2)
             this.rotation = 0;
         this.color[3] -= deltaTime * this.fadeRate;
@@ -316,6 +318,9 @@ class WaveHandler extends GameEntity {
         }
     }
 }
+function PushNewEntity(worldEntities, dir, rect = { x: 0, y: 0, width: 0.1, height: 0.1 }, type = EntityType.Projectile) {
+    worldEntities.push(new GameEntity(rect.x, rect.y, dir[0], dir[1], 0, 0, rect, type));
+}
 class Enemy extends GameEntity {
     constructor(x = 0, y = 0, vx = 0, vy = 0, ax = 0, ay = 0, rect = { x: 0, y: 0, width: 0, height: 0 }, worldEntities, health = 10, dir = [(Math.random() * 2) - 1, (Math.random() * 2) - 1]) {
         super(x, y, vx, vy, ax, ay, rect, EntityType.Enemy);
@@ -341,6 +346,7 @@ class Enemy extends GameEntity {
         this.cooldownDelay = this.maxCooldownDelay;
         this.flashTime = this.flashingUpTime;
         this.flashTimeCooldown = 0;
+        this.hpUniform = createUniformBuffer();
     }
     Update(deltaTime) {
         super.Update(deltaTime);
@@ -375,7 +381,7 @@ class Enemy extends GameEntity {
         return this.flashing;
     }
     SpawnProjectile(dir, rect = { x: this.x, y: this.y, width: 0.1, height: 0.1 }, delayReset = Math.PI / 20) {
-        this.worldEntities.push(new GameEntity(rect.x, rect.y, dir[0], dir[1], 0, 0, rect, EntityType.Projectile));
+        PushNewEntity(this.worldEntities, dir, rect);
         this.shootDelay = delayReset;
     }
     UpdateInternal(deltaTime) {
@@ -416,6 +422,37 @@ class BigEnemy extends Enemy {
             this.loop += deltaTime * 100;
             this.loop %= Math.PI * 2;
             this.SpawnProjectile(this.shootDir, { x: this.x, y: this.y + (Math.sin(this.loop) * 0.1), width: 0.1, height: 0.1 }, Math.PI / 20);
+        }
+    }
+}
+class IntroAnimation extends GameEntity {
+    constructor(worldEntityList) {
+        super(0, 0, 0, 0, 0, 0, { x: 0, y: 0, width: 0, height: 0 }, EntityType.None);
+        this.timer = 0;
+        this.imgsSpawned = 0;
+        this.curImgTime = 0;
+        this.timePerImg = 0.05;
+        this.totalImgs = 20;
+        this.curImgs = 0;
+        this.xPos = -1.3;
+        this.yPos = 0;
+        this.worldEntities = worldEntityList;
+    }
+    Update(deltaTime) {
+        super.Update(deltaTime);
+        this.curImgTime += deltaTime;
+        if (this.curImgTime >= this.timePerImg && this.curImgs < this.totalImgs) {
+            var b = (this.curImgs / this.totalImgs);
+            var part = new ParticleEntity(this.xPos, this.yPos, 0, 0, 0, 0, { x: this.xPos, y: this.yPos, width: 0.1 + 1.0 * b, height: 0.1 + 1.0 * b });
+            part.keepOffScreen = false;
+            part.fadeRate = this.curImgs < this.totalImgs - 1 ? 1.0 : 0.0;
+            var a = (1.0 - b);
+            part.color = [1.0 * a + b, b, b, 1.0];
+            part.angularVelocity = this.curImgs < this.totalImgs - 1 ? 0.5 : 0.0;
+            this.worldEntities.push(part);
+            this.xPos += 0.05;
+            this.curImgTime = 0;
+            this.curImgs += 1;
         }
     }
 }

@@ -1,7 +1,8 @@
 import { Rect } from 'collision';
 import { vec2 } from 'wgpu-matrix'
 import { isColliding } from 'collision';
-export {EntityType, GameEntity, Enemy, BigEnemy, WaveHandler, BossFight, HitBox, CharacterEntity, ParticleEntity}
+import { createUniformBuffer } from 'web_gpu';
+export {EntityType, GameEntity, Enemy, BigEnemy, WaveHandler, BossFight, HitBox, CharacterEntity, ParticleEntity, IntroAnimation}
 
 enum EntityType
 {
@@ -28,6 +29,7 @@ class GameEntity
     alive: boolean = true;
     type: EntityType = EntityType.None;
     keepOffScreen: boolean = false;
+    uniformBuffer: GPUBuffer;
 
     constructor(x: number = 0, y: number = 0, vx: number = 0, vy: number = 0, 
         ax: number = 0, ay: number = 0, rect: Rect = {x: 0, y: 0, width: 0, height: 0}, 
@@ -41,6 +43,7 @@ class GameEntity
         this.vy = vy;
         this.rect = rect;
         this.type = type;
+        this.uniformBuffer = createUniformBuffer();
     }
 
     static Copy(other: GameEntity): GameEntity
@@ -88,7 +91,7 @@ class ParticleEntity extends GameEntity
     {
         super.Update(deltaTime);
 
-        this.rotation += deltaTime*4;
+        this.rotation += deltaTime*4 * this.angularVelocity;
         if (this.rotation > Math.PI * 2) this.rotation = 0;
 
         this.color[3] -= deltaTime * this.fadeRate;
@@ -420,6 +423,13 @@ class WaveHandler extends GameEntity
     }
 }
 
+function PushNewEntity(worldEntities: Array<GameEntity>, dir: [number,number], rect: Rect = {x:0, y:0, width:0.1, height:0.1}, type: EntityType = EntityType.Projectile)
+{
+    worldEntities.push(new GameEntity(rect.x,rect.y,
+        dir[0], dir[1], 0, 0, rect, 
+        type));
+}
+
 class Enemy extends GameEntity
 {
     health: number = 0;
@@ -436,6 +446,7 @@ class Enemy extends GameEntity
     private flashingUpTime: number = 0.16;
     flashTime: number = 0.0;
     flashTimeCooldown: number = 0.0;
+    hpUniform: GPUBuffer;
 
     constructor(x: number = 0, y: number = 0, vx: number = 0, vy: number = 0, 
         ax: number = 0, ay: number = 0, rect: Rect = {x: 0, y: 0, width: 0, height: 0},
@@ -455,6 +466,7 @@ class Enemy extends GameEntity
 
         this.flashTime = this.flashingUpTime;
         this.flashTimeCooldown = 0;
+        this.hpUniform = createUniformBuffer();
     }
 
     public Update(deltaTime: number) 
@@ -503,9 +515,7 @@ class Enemy extends GameEntity
 
     public SpawnProjectile(dir: [number,number], rect: Rect = {x:this.x, y:this.y, width:0.1, height:0.1}, delayReset = Math.PI/20)
     {
-        this.worldEntities.push(new GameEntity(rect.x,rect.y,
-            dir[0], dir[1], 0, 0, rect, 
-            EntityType.Projectile));
+        PushNewEntity(this.worldEntities, dir, rect);
         this.shootDelay = delayReset;
     }
 
@@ -568,4 +578,48 @@ class BigEnemy extends Enemy
         }
     }
 
+}
+
+class IntroAnimation extends GameEntity
+{
+    timer: number = 0;
+    imgsSpawned: number = 0;
+    
+    private curImgTime: number = 0;
+    private timePerImg: number = 0.05;
+    private totalImgs: number = 20;
+    private curImgs: number = 0;
+
+    private xPos: number = -1.3;
+    private yPos: number = 0;
+
+    private worldEntities: Array<GameEntity>;
+
+    constructor(worldEntityList: Array<GameEntity>)
+    {
+        super(0, 0, 0, 0, 0, 0, {x: 0, y: 0, width: 0, height: 0}, EntityType.None);
+        this.worldEntities = worldEntityList;
+    }
+
+    public Update(deltaTime: number)
+    {
+        super.Update(deltaTime);
+        this.curImgTime += deltaTime;
+        if (this.curImgTime >= this.timePerImg && this.curImgs < this.totalImgs)
+        {
+            var b = (this.curImgs / this.totalImgs);
+
+            var part = new ParticleEntity(this.xPos, this.yPos, 0, 0, 0, 0, {x:this.xPos, y:this.yPos, width:0.1+1.0*b, height:0.1+1.0*b});
+            part.keepOffScreen = false;
+            part.fadeRate = this.curImgs < this.totalImgs-1 ? 1.0 : 0.0;
+            
+            var a = (1.0 - b);
+            part.color = [1.0*a + b, b, b, 1.0];
+            part.angularVelocity = this.curImgs < this.totalImgs-1 ? 0.5 : 0.0;
+            this.worldEntities.push(part);
+            this.xPos += 0.05;
+            this.curImgTime = 0;
+            this.curImgs += 1;
+        }
+    }
 }

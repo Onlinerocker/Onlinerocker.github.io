@@ -1,11 +1,10 @@
 // main.ts
 // CHICKEN MACHINE GUN BATTLE ARENA ALIEN EXTERMINATION SIMULATOR 2024
 import { mat4, vec2 } from 'wgpu-matrix';
-import { parseBitmapFont, fillGlyphVertexBuffer } from 'font';
 import { Rect, isColliding, moveAndHandleCollision } from 'collision';
-import { Enemy, GameEntity, EntityType, WaveHandler, BossFight, HitBox, CharacterEntity, ParticleEntity } from 'game_entity';
-import { blankTexture, drawProgressBar, loadUIAssets } from 'game_ui';
-export { drawSprite, createTexture, ratio };
+import { Enemy, GameEntity, EntityType, WaveHandler, BossFight, HitBox, CharacterEntity, ParticleEntity, IntroAnimation } from 'game_entity';
+import { blankTexture, drawProgressBar, loadUIAssets, ScreenText } from 'game_ui';
+export { drawSprite, createTexture, createUniformBuffer, ratio, createVertexBuffer };
 var WebGpuObj;
 var Pipeline;
 var PipelineBg;
@@ -20,7 +19,7 @@ var lmbDown;
 var ShiftLeftDown;
 var mouseX;
 var mouseY;
-var charEntity = new CharacterEntity();
+var charEntity;
 var charHealth = 1;
 var charShootTimer = 0;
 var slowTime = 0;
@@ -41,8 +40,8 @@ var charTexture;
 var bulletTexture;
 var bigEnemyTexture;
 var smallEnemyTexture;
-var glyphs;
-var glyphBuffers = new Map();
+//var glyphs: Map<string, GlyphInfo>;
+//var glyphBuffers: Map<string, GPUBuffer> = new Map();
 var lastFpsCalc = 0;
 var displayText = "";
 var accTime = 0;
@@ -432,7 +431,15 @@ function createVertexBuffer(device, buffer) {
     verticesBuffer.unmap(); // since we already set the data we don't need the mapping anymore, I guess
     return verticesBuffer;
 }
-function draw(renderPass, transform, verticesBuffer, texture, pipeline = Pipeline, color = [1, 1, 1, 1]) {
+function createUniformBuffer() {
+    var uniformBuffer;
+    uniformBuffer = WebGpuObj.device.createBuffer({
+        size: 4 * 24,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    return uniformBuffer;
+}
+function draw(uniformBuffer, renderPass, transform, verticesBuffer, texture, pipeline = Pipeline, color = [1, 1, 1, 1]) {
     var device = WebGpuObj.device;
     var rawBuffer = new Float32Array(24);
     for (let i = 0; i < 16; ++i)
@@ -442,10 +449,7 @@ function draw(renderPass, transform, verticesBuffer, texture, pipeline = Pipelin
     rawBuffer[18] = color[2];
     rawBuffer[19] = color[3];
     rawBuffer[20] = globalTime;
-    const uniformBuffer = device.createBuffer({
-        size: 4 * 24,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
+    //if (!uniformBuffer){ uniformBuffer = createUniformBuffer(); console.log("uniform created");}
     device.queue.writeBuffer(uniformBuffer, 0, rawBuffer.buffer, rawBuffer.byteOffset, rawBuffer.byteLength);
     // Create a sampler with linear filtering for smooth interpolation.
     const sampler = device.createSampler({
@@ -473,45 +477,28 @@ function draw(renderPass, transform, verticesBuffer, texture, pipeline = Pipelin
     renderPass.setVertexBuffer(0, verticesBuffer);
     renderPass.draw(6, 1, 0, 0); // 6 verts, 1 instance, start at 0th vert of 0th intstance
 }
-function drawText(renderPass, textString, mat, scale = 1.0, color = [1, 1, 1, 1]) {
-    var mat1 = mat4.copy(mat);
+var screenTexts = new Map();
+function drawText(renderPass, textString, mat, scale = 1.0, color = [1, 1, 1, 1], cache = true) {
     var device = WebGpuObj.device;
-    const text = new Float32Array([
-        -0.5, -0.5, 0, 1, 1, 1, 1, 1, 0, 1,
-        -0.5, 0.5, 0, 1, 1, 1, 1, 1, 0, 0,
-        0.5, -0.5, 0, 1, 1, 1, 1, 1, 1, 1,
-        0.5, -0.5, 0, 1, 1, 1, 1, 1, 1, 1,
-        -0.5, 0.5, 0, 1, 1, 1, 1, 1, 0, 0,
-        0.5, 0.5, 0, 1, 1, 1, 1, 1, 1, 0,
-    ]);
-    for (let c of textString) {
-        // need to scale each glyph the right size
-        // then need to advance the right distance
-        // also need to apply offset
-        let glyph = glyphs.get(c);
-        let glyphUvs;
-        if (glyph) {
-            //glyphUvs = getGlyphUv(glyph);
-            //var mat1Scaled = mat4.identity();
-            if (glyph.id == 32) {
-                mat4.scale(mat1, [scale / 10, scale / 10, 1], mat1);
-                mat4.translate(mat1, [glyph.xadvance / 50, 0, 0], mat1);
-                mat4.scale(mat1, [10 / scale, 10 / scale, 1], mat1);
-                continue;
-            }
-            mat4.scale(mat1, [scale / 10, scale / 10, 1], mat1);
-            mat4.translate(mat1, [glyph.xoffset / 50, -glyph.yoffset / 50, 0], mat1);
-            var verticesBufferText = glyphBuffers.get(c);
-            if (verticesBufferText == undefined) {
-                fillGlyphVertexBuffer(text, glyph);
-                verticesBufferText = createVertexBuffer(device, text);
-                glyphBuffers.set(c, verticesBufferText);
-            }
-            draw(renderPass, mat1, verticesBufferText, fontTexture, Pipeline, color);
-            mat4.translate(mat1, [glyph.xadvance / 50, 0, 0], mat1);
-            mat4.translate(mat1, [-glyph.xoffset / 50, glyph.yoffset / 50, 0], mat1);
-            mat4.scale(mat1, [10 / scale, 10 / scale, 1], mat1);
+    var mapKey = textString + scale + color[0] + color[1] + color[2] + color[3];
+    for (var num in mat) {
+        mapKey += num;
+    }
+    var screenText = screenTexts.get(mapKey);
+    if (!screenText) {
+        //console.log("creating text " + mapKey);
+        screenText = new ScreenText(textString, mat, scale, device);
+        if (cache)
+            screenTexts.set(mapKey, screenText);
+    }
+    var i = 0;
+    for (var c of textString) {
+        var buffer = screenText.getVertexBuffer(c);
+        if (!buffer || c == ' ') {
+            continue;
         }
+        draw(screenText.uniforms[i], renderPass, screenText.mats[i], buffer, fontTexture, Pipeline, color);
+        ++i;
     }
 }
 function createSpriteBuffer(color = [1, 1, 1, 1]) {
@@ -527,12 +514,12 @@ function createSpriteBuffer(color = [1, 1, 1, 1]) {
     return verticesBuffer;
 }
 var spriteBuffer;
-function drawSprite(renderPass, transform, texture, color = [1, 1, 1, 1], pipeline = Pipeline, cache = false) {
+function drawSprite(uniformBuffer, renderPass, transform, texture, color = [1, 1, 1, 1], pipeline = Pipeline, cache = false) {
     if (!spriteBuffer) {
+        console.log("Creating sprite buffer");
         spriteBuffer = createSpriteBuffer();
     }
-    const verticesBuffer = spriteBuffer;
-    draw(renderPass, transform, verticesBuffer, texture, pipeline, color);
+    draw(uniformBuffer, renderPass, transform, spriteBuffer, texture, pipeline, color);
 }
 function createRandomParticles(x, y, count, scale = 1, fadeRate = 0, color = [1, 0, 0, 1], stayAlive = false, velScale = 1, gravMod = 1) {
     for (let i = 0; i < count; ++i) {
@@ -553,6 +540,18 @@ function createRandomParticles(x, y, count, scale = 1, fadeRate = 0, color = [1,
     }
 }
 let flipStart = 0;
+var bgUniform;
+var worldUniform;
+var charUniform;
+var cdUniform;
+var bossHpUniform;
+var bossHpTextUniform;
+var fpsTxtUniform;
+var winTxtUniform;
+var startRTxtUniform;
+var startRTxtShadUniform;
+var startTxtUniform;
+var startTxtShadUniform;
 async function render() {
     const now = performance.now();
     const flipTime = now - flipStart;
@@ -613,25 +612,26 @@ async function render() {
     var mat1 = mat4.identity();
     mat1 = mat4.mul(orthoMat, mat1);
     renderPass.setPipeline(PipelineBg);
-    drawSprite(renderPass, mat4.scale(mat4.identity(), [2, 2, 1]), blankTexture, [1, 1, 1, 1], PipelineBg);
+    drawSprite(bgUniform, renderPass, mat4.scale(mat4.identity(), [2, 2, 1]), blankTexture, [1, 1, 1, 1], PipelineBg);
     renderPass.setPipeline(Pipeline);
     // draw world
     var matGabe = mat4.identity();
     matGabe = mat4.mul(orthoMat, matGabe);
     mat4.scale(matGabe, [gabeRect.width, gabeRect.height, 1.0], matGabe);
     mat4.translate(matGabe, [0, -1, 0], matGabe);
-    drawSprite(renderPass, matGabe, blankTexture, [0.3, 0.7, 0.3, 1]);
+    drawSprite(worldUniform, renderPass, matGabe, blankTexture, [0.3, 0.7, 0.3, 1]);
     //draw character
     if (charEntity.alive) {
         //drawSprite(renderPass, mat, blankTexture); //<-- hit point visual
-        drawSprite(renderPass, matChar, charTexture);
-        if (charEntity.charSwinging) {
+        drawSprite(charUniform, renderPass, matChar, charTexture);
+        /*if (charEntity.charSwinging)
+        {
             var matSwing = mat4.identity();
             mat4.translate(matSwing, [charSwingEntity.x, charSwingEntity.y, 0.0], matSwing);
             mat4.scale(matSwing, [charSwingEntity.rect.width, charSwingEntity.rect.height, 1], matSwing);
             mat4.mul(orthoMat, matSwing, matSwing);
             drawSprite(renderPass, matSwing, blankTexture);
-        }
+        }*/
     }
     // draw entities
     for (let entity of entities) {
@@ -654,7 +654,7 @@ async function render() {
             var enemy = entity;
             flashing = enemy.GetFlashing();
             texture = entity.type == EntityType.BigEnemy ? bigEnemyTexture : smallEnemyTexture;
-            drawProgressBar(renderPass, enemy.health, enemy.maxHealth, { x: entity.x, y: entity.y + enemy.rect.height / 2 + 0.05, width: 0.3, height: 0.03 });
+            drawProgressBar(enemy.hpUniform, renderPass, enemy.health, enemy.maxHealth, { x: entity.x, y: entity.y + enemy.rect.height / 2 + 0.05, width: 0.3, height: 0.03 });
             color = [1, 1, 1, 1];
         }
         else if (entity.type == EntityType.Bullet) {
@@ -671,7 +671,7 @@ async function render() {
             color = entity.color;
             texture = blankTexture;
         }
-        drawSprite(renderPass, matEntity, texture, flashing ? [1, 0.5, 0.5, 1] : color);
+        drawSprite(entity.uniformBuffer, renderPass, matEntity, texture, flashing ? [1, 0.5, 0.5, 1] : color);
     }
     // fps counter calc
     if (!Number.isNaN(deltaTime))
@@ -689,18 +689,22 @@ async function render() {
     // draw UI
     // TODO: white text, more phases, art, restart button, start screen
     // slow cooldown bar
-    //drawProgressBar(renderPass, slowTime, 1.0, {x:-Width/Height + 0.16, y:0.9, width:0.3, height:0.05}, [0,0,0,1], [0,1,1,1]);
+    drawProgressBar(cdUniform, renderPass, slowTime, 1.0, { x: -Width / Height + 0.16, y: 0.9, width: 0.3, height: 0.05 }, [0, 0, 0, 1], [0, 1, 1, 1]);
     // boss health
     if (charEntity.alive) {
         var bossHealthMat = mat4.identity();
         mat4.translate(bossHealthMat, [-0.95, -0.85, 0], bossHealthMat);
         drawText(renderPass, "Boss Health", bossHealthMat, 0.5);
-        drawProgressBar(renderPass, bossFight.currentHealth, bossFight.maxHealth, { x: 0, y: -0.95, width: 1.9 * Width / Height, height: 0.05 }, [0, 0, 0, 1], [1, 0, 0, 1]);
+        drawProgressBar(bossHpUniform, renderPass, bossFight.currentHealth, bossFight.maxHealth, { x: 0, y: -0.95, width: 1.9 * Width / Height, height: 0.05 }, [0, 0, 0, 1], [1, 0, 0, 1]);
     }
     if (!charEntity.alive) {
         let preventedMat = mat4.identity();
-        drawText(renderPass, "Press R to fight!", mat4.translate(preventedMat, [-0.51, 0.085, 0]), 1.0, [0, 0, 0, 1]);
-        drawText(renderPass, "Press R to fight!", mat4.translate(preventedMat, [-0.52, 0.1, 0]), 1.0);
+        //drawText(renderPass, "Press R to fight!", mat4.translate(preventedMat, [-0.51, 0.085, 0]), 1.0, [0, 0, 0, 1]);
+        //drawText(renderPass, "Press R to fight!", mat4.translate(preventedMat, [-0.52, 0.1, 0]), 1.0);
+        drawText(renderPass, "Press R", mat4.translate(preventedMat, [0.25, 0.2, 0]), 1.0, [0, 0, 0, 1]);
+        drawText(renderPass, "Press R", mat4.translate(preventedMat, [0.24, 0.21, 0]), 1.0);
+        drawText(renderPass, "to fight!", mat4.translate(preventedMat, [0.35, -0.1, 0]), 1.0, [0, 0, 0, 1]);
+        drawText(renderPass, "to fight!", mat4.translate(preventedMat, [0.34, -0.09, 0]), 1.0);
     }
     else if (bossFight.currentHealth <= 0) {
         let preventedMat = mat4.identity();
@@ -708,9 +712,10 @@ async function render() {
     }
     // fps counter
     mat4.translate(mat1, [-Width / Height, 1.0, 0], mat1);
-    drawText(renderPass, displayText, mat1, 0.5);
+    drawText(renderPass, displayText, mat1, 0.5, [1, 1, 1, 1], false);
     renderPass.end();
     device.queue.submit([commandEncoder.finish()]);
+    await device.queue.onSubmittedWorkDone();
     requestAnimationFrame(render);
 }
 function handleKeyDown(e) {
@@ -831,7 +836,6 @@ function shootBullet() {
     entities.push(entity);
 }
 async function main() {
-    glyphs = await parseBitmapFont("./font/white_font.txt");
     WDown = false;
     ADown = false;
     SDown = false;
@@ -841,13 +845,6 @@ async function main() {
     lastFpsCalc = 10.0;
     window.addEventListener('keydown', (e) => handleKeyDown(e));
     window.addEventListener('keyup', (e) => handleKeyUp(e));
-    charEntity.x = 0;
-    charEntity.y = 1.0;
-    charEntity.rect.width = 0.1;
-    charEntity.rect.height = 0.2;
-    charEntity.alive = false;
-    charEntity.type = EntityType.Player;
-    charEntity.ay = -450;
     WebGpuObj = await initWebGPU();
     Pipeline = await createPipeline(WebGpuObj.device, WebGpuObj.format);
     PipelineBg = await createPipelineBackground(WebGpuObj.device, WebGpuObj.format);
@@ -859,6 +856,27 @@ async function main() {
     bigEnemyTexture = await createTexture('./img/enemy_big_v1.png');
     smallEnemyTexture = await createTexture('./img/enemy_small.png');
     await loadUIAssets();
+    bgUniform = createUniformBuffer();
+    charUniform = createUniformBuffer();
+    worldUniform = createUniformBuffer();
+    cdUniform = createUniformBuffer();
+    bossHpUniform = createUniformBuffer();
+    //bossHpTextUniform= createUniformBuffer();
+    //fpsTxtUniform= createUniformBuffer();
+    //winTxtUniform= createUniformBuffer();
+    //startRTxtUniform= createUniformBuffer();
+    //startRTxtShadUniform= createUniformBuffer();
+    //startTxtUniform= createUniformBuffer();
+    //startTxtShadUniform= createUniformBuffer();
+    charEntity = new CharacterEntity();
+    charEntity.x = 0;
+    charEntity.y = 1.0;
+    charEntity.rect.width = 0.1;
+    charEntity.rect.height = 0.2;
+    charEntity.alive = false;
+    charEntity.type = EntityType.Player;
+    charEntity.ay = -450;
+    entities.push(new IntroAnimation(entities));
     requestAnimationFrame(render);
 }
 main();
