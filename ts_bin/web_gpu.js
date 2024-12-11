@@ -342,7 +342,7 @@ function updateWorld(deltaTime, b) {
                 enemy.SetFlashing(true);
                 if (enemy.health <= 0) {
                     bossFight.currentHealth -= enemy.maxHealth; //we need to do this for swing attacks too... 
-                    //enemy.alive = false;
+                    enemy.alive = false;
                     //deadEntities.push(j);
                 }
                 //break; lets say we can damage more than one
@@ -396,6 +396,7 @@ function updateWorld(deltaTime, b) {
     if (deadEntities.length > 0)
         entities.splice(back, entities.length - back);
     deadEntities.splice(0, deadEntities.length);
+    console.log("entities " + entities.length);
     if (false) {
         var inc = Math.floor(Math.random() * 3 + 1);
         lastSpawnPoint += inc;

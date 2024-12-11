@@ -100,7 +100,7 @@ class ParticleEntity extends GameEntity
         if (this.color[3] < 0)
         {
             this.color[3] = 0;
-            //this.alive = false;
+            this.alive = false;
         }
     }
 }

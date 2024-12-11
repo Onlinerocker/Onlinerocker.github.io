@@ -78,7 +78,7 @@ class ParticleEntity extends GameEntity {
         this.color[3] -= deltaTime * this.fadeRate;
         if (this.color[3] < 0) {
             this.color[3] = 0;
-            //this.alive = false;
+            this.alive = false;
         }
     }
 }
