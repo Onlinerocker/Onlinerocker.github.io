@@ -14,6 +14,8 @@ enum EntityType
     BigEnemy,
     HitBox,
     Particle,
+    Intro,
+    Explosion,
 }
 
 // TODO: move rects to game
@@ -447,6 +449,7 @@ class Enemy extends GameEntity
     flashTime: number = 0.0;
     flashTimeCooldown: number = 0.0;
     hpUniform: GPUBuffer;
+    hpUniformBg: GPUBuffer;
 
     constructor(x: number = 0, y: number = 0, vx: number = 0, vy: number = 0, 
         ax: number = 0, ay: number = 0, rect: Rect = {x: 0, y: 0, width: 0, height: 0},
@@ -467,6 +470,7 @@ class Enemy extends GameEntity
         this.flashTime = this.flashingUpTime;
         this.flashTimeCooldown = 0;
         this.hpUniform = createUniformBuffer();
+        this.hpUniformBg = createUniformBuffer();
     }
 
     public Update(deltaTime: number) 
@@ -590,7 +594,7 @@ class IntroAnimation extends GameEntity
     private totalImgs: number = 20;
     private curImgs: number = 0;
 
-    private xPos: number = -1.3;
+    private xPos: number = -1.4;
     private yPos: number = 0;
 
     private worldEntities: Array<GameEntity>;
@@ -601,6 +605,12 @@ class IntroAnimation extends GameEntity
         this.worldEntities = worldEntityList;
     }
 
+    public Reset()
+    {
+        this.curImgTime = 0.0;
+        this.curImgs = 0.0;
+    }
+
     public Update(deltaTime: number)
     {
         super.Update(deltaTime);
@@ -609,7 +619,8 @@ class IntroAnimation extends GameEntity
         {
             var b = (this.curImgs / this.totalImgs);
 
-            var part = new ParticleEntity(this.xPos, this.yPos, 0, 0, 0, 0, {x:this.xPos, y:this.yPos, width:0.1+1.0*b, height:0.1+1.0*b});
+            var part = new ParticleEntity(this.xPos, this.yPos, 0, 0, 0, 0, {x:this.xPos, y:this.yPos, width:0.1+1.7*b, height:0.1+1.7*b});
+            part.type = EntityType.Intro;
             part.keepOffScreen = false;
             part.fadeRate = this.curImgs < this.totalImgs-1 ? 1.0 : 0.0;
             

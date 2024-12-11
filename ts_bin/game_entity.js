@@ -12,6 +12,8 @@ var EntityType;
     EntityType[EntityType["BigEnemy"] = 5] = "BigEnemy";
     EntityType[EntityType["HitBox"] = 6] = "HitBox";
     EntityType[EntityType["Particle"] = 7] = "Particle";
+    EntityType[EntityType["Intro"] = 8] = "Intro";
+    EntityType[EntityType["Explosion"] = 9] = "Explosion";
 })(EntityType || (EntityType = {}));
 // TODO: move rects to game
 class GameEntity {
@@ -347,6 +349,7 @@ class Enemy extends GameEntity {
         this.flashTime = this.flashingUpTime;
         this.flashTimeCooldown = 0;
         this.hpUniform = createUniformBuffer();
+        this.hpUniformBg = createUniformBuffer();
     }
     Update(deltaTime) {
         super.Update(deltaTime);
@@ -434,16 +437,21 @@ class IntroAnimation extends GameEntity {
         this.timePerImg = 0.05;
         this.totalImgs = 20;
         this.curImgs = 0;
-        this.xPos = -1.3;
+        this.xPos = -1.4;
         this.yPos = 0;
         this.worldEntities = worldEntityList;
+    }
+    Reset() {
+        this.curImgTime = 0.0;
+        this.curImgs = 0.0;
     }
     Update(deltaTime) {
         super.Update(deltaTime);
         this.curImgTime += deltaTime;
         if (this.curImgTime >= this.timePerImg && this.curImgs < this.totalImgs) {
             var b = (this.curImgs / this.totalImgs);
-            var part = new ParticleEntity(this.xPos, this.yPos, 0, 0, 0, 0, { x: this.xPos, y: this.yPos, width: 0.1 + 1.0 * b, height: 0.1 + 1.0 * b });
+            var part = new ParticleEntity(this.xPos, this.yPos, 0, 0, 0, 0, { x: this.xPos, y: this.yPos, width: 0.1 + 1.7 * b, height: 0.1 + 1.7 * b });
+            part.type = EntityType.Intro;
             part.keepOffScreen = false;
             part.fadeRate = this.curImgs < this.totalImgs - 1 ? 1.0 : 0.0;
             var a = (1.0 - b);
