@@ -59,6 +59,7 @@ var introTexture: GPUTexture;
 var chickTexture: GPUTexture;
 var explosionTexture: GPUTexture;
 var groundTexture: GPUTexture;
+var bloodTexture: GPUTexture;
 
 //var glyphs: Map<string, GlyphInfo>;
 //var glyphBuffers: Map<string, GPUBuffer> = new Map();
@@ -297,7 +298,7 @@ async function createPipeline(device: GPUDevice, format: GPUTextureFormat)
 function killPlayer()
 {
     charEntity.alive = false;
-    createRandomParticles(charEntity.x, charEntity.y, 6, 3, 0.1, [1, 0, 0, 1], true);
+    createRandomParticles(charEntity.x, charEntity.y, 6, 10, 0.1, [1, 1, 1, 1], false, 0.25, 2.0, EntityType.Blood, 1.0);
     entities.push(new IntroAnimation(entities));
     music.pause();
 }
@@ -460,16 +461,16 @@ function updateWorld(deltaTime: number, b: Rect)
         let e = entities[i];
         if (e.type == EntityType.Bullet)
         {
-            createRandomParticles(e.x, e.y, 1, 1, 1);
+            createRandomParticles(e.x, e.y, 1, 3, 1, [1, 1, 1, 1], false, 0.5, 1.0, EntityType.Blood);
             createRandomParticles(e.x, e.y, 1, 6, 4, [1, 1, 1, 1], false, 0.4, 0, EntityType.Explosion);
         }
         else if (e.type == EntityType.BigEnemy)
         {
-            createRandomParticles(e.x, e.y, 6, 3, 0.1);
+            createRandomParticles(e.x, e.y, 6, 10, 0.1, [1, 1, 1, 1], false, 0.25, 1.0, EntityType.Blood, 1.0);
         }
         else if (e.type == EntityType.Enemy)
         {
-            createRandomParticles(e.x, e.y, 8, 2, 0.1);
+            createRandomParticles(e.x, e.y, 8, 6, 0.1, [1, 1, 1, 1], false, 0.25, 1.0, EntityType.Blood, 1.0);
         }
     }
 
@@ -679,12 +680,13 @@ function drawSprite(uniformBuffer: GPUBuffer, renderPass: GPURenderPassEncoder, 
     draw(uniformBuffer, renderPass, transform, spriteBuffer, texture, pipeline, color);
 }
 
-function createRandomParticles(x: number, y: number, count: number, scale: number = 1, fadeRate: number = 0, color: [number, number, number, number] = [1, 0, 0, 1], stayAlive: boolean = false, velScale: number = 1, gravMod: number = 1, type: EntityType = EntityType.Particle)
+function createRandomParticles(x: number, y: number, count: number, scale: number = 1, fadeRate: number = 0, color: [number, number, number, number] = [1, 0, 0, 1], stayAlive: boolean = false, velScale: number = 1, gravMod: number = 1, type: EntityType = EntityType.Particle, angVelScale: number = 0.0)
 {
     for (let i = 0; i < count; ++i)
     {
         let vxRand = -0.5 + Math.random() * 1;
         let vyRand = -0.5 + Math.random() * 1;
+        let vaRand = -1.0 + Math.random() * 2;
         vxRand *= scale * velScale;
         vyRand *= scale * velScale;
         let rect: Rect = new Rect();
@@ -695,6 +697,7 @@ function createRandomParticles(x: number, y: number, count: number, scale: numbe
         part.keepOffScreen = stayAlive;
         part.fadeRate = fadeRate;
         part.color = color;
+        part.angularVelocity = vaRand * angVelScale;
         entities.push(part);
     }
 }
@@ -716,6 +719,66 @@ function lerpVec4(a: [number,number,number,number], b: [number,number,number,num
         ret[i] = (b[i] * val) + (a[i]*(1.0 - val));
     }
     return ret;
+}
+
+function drawEntity(entity: GameEntity, orthoMat: Float32Array, renderPass: GPURenderPassEncoder)
+{
+    let matEntity = mat4.clone(orthoMat);
+    mat4.translate(matEntity, [entity.x, entity.y, 0], matEntity);
+    if (entity.type == EntityType.Particle || entity.type == EntityType.Intro || entity.type == EntityType.Explosion || entity.type == EntityType.Blood)
+    {
+        mat4.rotateZ(matEntity, (entity as ParticleEntity).rotation, matEntity);
+    }
+    let dir = 1;
+    let scale = 1;
+    if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy) dir = entity.x > 0 ? -1 : 1;
+    if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy) scale = 1.3;
+    mat4.scale(matEntity, [dir * entity.rect.width * scale, entity.rect.height * scale, 1.0], matEntity)
+    var color: [number,number,number,number] = [5,0.5,0.5,1];
+    var texture = blankTexture;
+    var flashing = false;
+    if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy)
+    {
+        var enemy = entity as Enemy;
+        flashing = enemy.GetFlashing();
+        texture = entity.type == EntityType.BigEnemy ? bigEnemyTexture : smallEnemyTexture;
+        drawProgressBar(enemy.hpUniform, enemy.hpUniformBg, renderPass, enemy.health, enemy.maxHealth, {x: entity.x, y: entity.y + enemy.rect.height/2 + 0.05, width: 0.3, height: 0.03});
+        color = [1,1,1,1];
+    } 
+    else if (entity.type == EntityType.Bullet)
+    {
+        color = [1,1,1,1];
+        texture = bulletTexture;
+    }
+    else if (entity.type == EntityType.Projectile)
+    {
+        texture = bulletTexture;
+    }
+    else if (entity.type == EntityType.HitBox)
+    {
+        return;
+    }
+    else if (entity.type == EntityType.Particle)
+    {
+        color = (entity as ParticleEntity).color;
+        texture = blankTexture;
+    }
+    else if (entity.type == EntityType.Intro)
+    {
+        color = (entity as ParticleEntity).color;
+        texture = introTexture;
+    }
+    else if (entity.type == EntityType.Explosion)
+    {
+        color = (entity as ParticleEntity).color;
+        texture = explosionTexture;
+    }
+    else if (entity.type == EntityType.Blood)
+    {
+        color = (entity as ParticleEntity).color;
+        texture = bloodTexture;
+    }
+    drawSprite(entity.uniformBuffer, renderPass, matEntity, texture, flashing ? [1,0.5,0.5,1] : color);
 }
 
 async function render() 
@@ -821,60 +884,24 @@ async function render()
     }
     
     // draw entities
+    var introAnim: IntroAnimation | undefined;
     for (let entity of entities)
     {
-        let matEntity = mat4.clone(orthoMat);
-        mat4.translate(matEntity, [entity.x, entity.y, 0], matEntity);
-        if (entity.type == EntityType.Particle || entity.type == EntityType.Intro || entity.type == EntityType.Explosion)
+        if (entity instanceof IntroAnimation)
         {
-            mat4.rotateZ(matEntity, (entity as ParticleEntity).rotation, matEntity);
+            introAnim = entity;
         }
-        let dir = 1;
-        let scale = 1;
-        if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy) dir = entity.x > 0 ? -1 : 1;
-        if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy) scale = 1.3;
-        mat4.scale(matEntity, [dir * entity.rect.width * scale, entity.rect.height * scale, 1.0], matEntity)
-        var color: [number,number,number,number] = [5,0.5,0.5,1];
-        var texture = blankTexture;
-        var flashing = false;
-        if (entity.type == EntityType.Enemy || entity.type == EntityType.BigEnemy)
-        {
-            var enemy = entity as Enemy;
-            flashing = enemy.GetFlashing();
-            texture = entity.type == EntityType.BigEnemy ? bigEnemyTexture : smallEnemyTexture;
-            drawProgressBar(enemy.hpUniform, enemy.hpUniformBg, renderPass, enemy.health, enemy.maxHealth, {x: entity.x, y: entity.y + enemy.rect.height/2 + 0.05, width: 0.3, height: 0.03});
-            color = [1,1,1,1];
-        } 
-        else if (entity.type == EntityType.Bullet)
-        {
-            color = [1,1,1,1];
-            texture = bulletTexture;
-        }
-        else if (entity.type == EntityType.Projectile)
-        {
-            texture = bulletTexture;
-        }
-        else if (entity.type == EntityType.HitBox)
-        {
-            continue;
-        }
-        else if (entity.type == EntityType.Particle)
-        {
-            color = (entity as ParticleEntity).color;
-            texture = blankTexture;
-        }
-        else if (entity.type == EntityType.Intro)
-        {
-            color = (entity as ParticleEntity).color;
-            texture = introTexture;
-        }
-        else if (entity.type == EntityType.Explosion)
-            {
-                color = (entity as ParticleEntity).color;
-                texture = explosionTexture;
-            }
-        drawSprite(entity.uniformBuffer, renderPass, matEntity, texture, flashing ? [1,0.5,0.5,1] : color);
+        drawEntity(entity, orthoMat, renderPass);
     }
+
+    if (introAnim)
+    {
+        for (let introPart of introAnim.particles)
+        {
+            drawEntity(introPart, orthoMat, renderPass);
+        }
+    }
+
 
     // fps counter calc
     if (!Number.isNaN(deltaTime))
@@ -1133,6 +1160,7 @@ async function main()
     chickTexture = await createTexture('./img/chick.png');
     explosionTexture = await createTexture('./img/explosion.png');
     groundTexture = await createTexture('./img/platform_ready1.png');
+    bloodTexture = await createTexture('./img/blood_2.png');
 
     await loadUIAssets();
 

@@ -16,6 +16,7 @@ enum EntityType
     Particle,
     Intro,
     Explosion,
+    Blood,
 }
 
 // TODO: move rects to game
@@ -96,8 +97,9 @@ class ParticleEntity extends GameEntity
         this.rotation += deltaTime*4 * this.angularVelocity;
         if (this.rotation > Math.PI * 2) this.rotation = 0;
 
-        this.color[3] -= deltaTime * this.fadeRate;
-        if (this.color[3] < 0)
+
+        if (this.color[3] > 0) this.color[3] -= deltaTime * this.fadeRate;
+        if (this.color[3] <= 0)
         {
             this.color[3] = 0;
             this.alive = false;
@@ -588,6 +590,7 @@ class IntroAnimation extends GameEntity
 {
     timer: number = 0;
     imgsSpawned: number = 0;
+    particles: Array<ParticleEntity> = new Array<ParticleEntity>();
     
     private curImgTime: number = 0;
     private timePerImg: number = 0.05;
@@ -597,12 +600,9 @@ class IntroAnimation extends GameEntity
     private xPos: number = -1.4;
     private yPos: number = 0;
 
-    private worldEntities: Array<GameEntity>;
-
     constructor(worldEntityList: Array<GameEntity>)
     {
         super(0, 0, 0, 0, 0, 0, {x: 0, y: 0, width: 0, height: 0}, EntityType.None);
-        this.worldEntities = worldEntityList;
     }
 
     public Reset()
@@ -614,6 +614,10 @@ class IntroAnimation extends GameEntity
     public Update(deltaTime: number)
     {
         super.Update(deltaTime);
+        for(let i = 0; i < this.particles.length; ++i)
+        {
+            this.particles[i].Update(deltaTime);
+        }
         this.curImgTime += deltaTime;
         if (this.curImgTime >= this.timePerImg && this.curImgs < this.totalImgs)
         {
@@ -626,8 +630,8 @@ class IntroAnimation extends GameEntity
             
             var a = (1.0 - b);
             part.color = [1.0*a + b, b, b, 1.0];
-            part.angularVelocity = this.curImgs < this.totalImgs-1 ? 0.5 : 0.0;
-            this.worldEntities.push(part);
+            part.angularVelocity = 0;//this.curImgs < this.totalImgs-1 ? 0.5 : 0.0;
+            this.particles.push(part);
             this.xPos += 0.05;
             this.curImgTime = 0;
             this.curImgs += 1;

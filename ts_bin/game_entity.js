@@ -14,6 +14,7 @@ var EntityType;
     EntityType[EntityType["Particle"] = 7] = "Particle";
     EntityType[EntityType["Intro"] = 8] = "Intro";
     EntityType[EntityType["Explosion"] = 9] = "Explosion";
+    EntityType[EntityType["Blood"] = 10] = "Blood";
 })(EntityType || (EntityType = {}));
 // TODO: move rects to game
 class GameEntity {
@@ -75,8 +76,9 @@ class ParticleEntity extends GameEntity {
         this.rotation += deltaTime * 4 * this.angularVelocity;
         if (this.rotation > Math.PI * 2)
             this.rotation = 0;
-        this.color[3] -= deltaTime * this.fadeRate;
-        if (this.color[3] < 0) {
+        if (this.color[3] > 0)
+            this.color[3] -= deltaTime * this.fadeRate;
+        if (this.color[3] <= 0) {
             this.color[3] = 0;
             this.alive = false;
         }
@@ -433,13 +435,13 @@ class IntroAnimation extends GameEntity {
         super(0, 0, 0, 0, 0, 0, { x: 0, y: 0, width: 0, height: 0 }, EntityType.None);
         this.timer = 0;
         this.imgsSpawned = 0;
+        this.particles = new Array();
         this.curImgTime = 0;
         this.timePerImg = 0.05;
         this.totalImgs = 20;
         this.curImgs = 0;
         this.xPos = -1.4;
         this.yPos = 0;
-        this.worldEntities = worldEntityList;
     }
     Reset() {
         this.curImgTime = 0.0;
@@ -447,6 +449,9 @@ class IntroAnimation extends GameEntity {
     }
     Update(deltaTime) {
         super.Update(deltaTime);
+        for (let i = 0; i < this.particles.length; ++i) {
+            this.particles[i].Update(deltaTime);
+        }
         this.curImgTime += deltaTime;
         if (this.curImgTime >= this.timePerImg && this.curImgs < this.totalImgs) {
             var b = (this.curImgs / this.totalImgs);
@@ -456,8 +461,8 @@ class IntroAnimation extends GameEntity {
             part.fadeRate = this.curImgs < this.totalImgs - 1 ? 1.0 : 0.0;
             var a = (1.0 - b);
             part.color = [1.0 * a + b, b, b, 1.0];
-            part.angularVelocity = this.curImgs < this.totalImgs - 1 ? 0.5 : 0.0;
-            this.worldEntities.push(part);
+            part.angularVelocity = 0; //this.curImgs < this.totalImgs-1 ? 0.5 : 0.0;
+            this.particles.push(part);
             this.xPos += 0.05;
             this.curImgTime = 0;
             this.curImgs += 1;
